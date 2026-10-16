@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cadenas del módulo de IA (ai/). -->
+<resources>
+    <!-- Errores de IA (LlmErrorKind.messageRes) -->
+    <string name="ai_error_auth">La IA no está configurada o la clave no es válida. Revísalo en Ajustes.</string>
+    <string name="ai_error_rate">Has llegado al límite de uso de tu proveedor de IA. Prueba dentro de un rato.</string>
+    <string name="ai_error_network">No hay conexión con el proveedor de IA. Comprueba la red.</string>
+    <string name="ai_error_server">El proveedor de IA ha devuelto un error. Revisa la dirección y los modelos en Ajustes o prueba más tarde.</string>
+    <string name="ai_error_bad_output">La IA ha devuelto una respuesta que no se entiende. Prueba otra vez.</string>
+    <string name="ai_error_refusal">La IA no ha querido responder a esto.</string>
+
+    <!-- Probar conexión (AiProcessing.testConnection) -->
+    <string name="ai_test_ok">Conexión correcta</string>
+</resources>

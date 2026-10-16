@@ -14,7 +14,8 @@ class SettingsLogicTest {
 
     @Test fun `url de la api solo https o http local`() {
         assertTrue(isValidBaseUrl("https://api.anthropic.com"))
-        assertTrue(isValidBaseUrl("http://10.0.2.2:8787"))
+        assertTrue(isValidBaseUrl("http://10.0.2.2:8787", allowLocalHttp = true))
+        assertFalse(isValidBaseUrl("http://10.0.2.2:8787", allowLocalHttp = false)) // release: sin texto plano
         assertFalse(isValidBaseUrl("http://api.example.com"))
         assertFalse(isValidBaseUrl("api.anthropic.com"))
         assertFalse(isValidBaseUrl(""))

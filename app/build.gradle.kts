@@ -41,6 +41,11 @@ android {
         compose = true
         buildConfig = true
     }
+    // MainActivity fuerza es-ES (selectores de Material 3): con un AAB partido por idioma, en un móvil en
+    // otro idioma no llegarían las cadenas en español de las librerías.
+    bundle {
+        language { enableSplit = false }
+    }
 }
 
 kotlin {

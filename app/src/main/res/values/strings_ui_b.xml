@@ -152,6 +152,8 @@
     <string name="settings_ai_cost_note">Pagas directamente al proveedor con tu clave. Cifras orientativas de octubre de 2026: revisa sus precios.</string>
     <string name="settings_ai_consent_title">Antes de activar la IA</string>
     <string name="settings_ai_consent_body">Mysone enviará a %1$s (%2$s) el texto de tus transcripciones para resumirlas, sacar tareas y responder a tus preguntas. Puede incluir lo que dijeron otras personas. El audio nunca sale del móvil.</string>
+    <string name="settings_ai_consent_body_host">Mysone enviará a %1$s el texto de tus transcripciones para resumirlas, sacar tareas y responder a tus preguntas. Puede incluir lo que dijeron otras personas. El audio nunca sale del móvil.</string>
+    <string name="settings_ai_consent_other_server">Lo que se haga con tus datos depende de quien gestione ese servidor.</string>
     <string name="settings_ai_consent_deepseek">DeepSeek guarda los datos en China y puede usarlos para entrenar sus modelos. Si grabas conversaciones de otras personas, enviárselas puede incumplir el RGPD. No lo recomendamos.</string>
     <string name="settings_ai_consent_understood">Lo entiendo y quiero usarlo igualmente</string>
     <string name="settings_ai_consent_accept">Aceptar y activar</string>
@@ -159,7 +161,7 @@
     <!-- Ajustes › Transcripción -->
     <string name="models_intro">La transcripción se hace en el móvil con un modelo que descargas una vez. Sin modelo, la escucha no puede empezar.</string>
     <string name="models_ram">Tu móvil tiene %1$d GB de RAM.</string>
-    <string name="models_wifi_only">Descargar solo con wifi</string>
+    <string name="models_wifi_only">Descargar solo con Wi-Fi</string>
     <string name="models_wifi_only_desc">Los modelos ocupan cientos de MB.</string>
     <string name="models_section_catalog">Modelos</string>
     <string name="models_meta">%1$s · %2$s</string>
@@ -168,6 +170,7 @@
     <string name="models_download">Descargar (%1$s)</string>
     <string name="models_downloading">Descargando… %1$d %%</string>
     <string name="models_verifying">Comprobando los archivos…</string>
+    <string name="models_installed">Instalado</string>
     <string name="models_test">Probar</string>
     <string name="models_testing">Transcribiendo la frase de prueba…</string>
     <string name="models_test_ok">Funciona: «%1$s»</string>
@@ -180,7 +183,8 @@
     <string name="models_import_pick">Elegir archivo de audio</string>
     <string name="models_import_need_model">Descarga un modelo para poder importar.</string>
     <string name="models_import_progress">Transcribiendo… %1$d %%</string>
-    <string name="models_import_done">Transcrito. Lo tienes en Hoy.</string>
+    <string name="models_import_done">Transcrito.</string>
+    <string name="models_import_done_at">Transcrito. Lo tienes en %1$s, a las %2$s.</string>
 
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>

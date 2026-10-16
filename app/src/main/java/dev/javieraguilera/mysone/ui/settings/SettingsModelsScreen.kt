@@ -56,13 +56,16 @@ import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.AsrModel
 import dev.javieraguilera.mysone.asr.AudioImporter
+import dev.javieraguilera.mysone.asr.DownloadWait
 import dev.javieraguilera.mysone.asr.ImportProgress
 import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.container
+import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.ui.components.BackTopBar
 import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
+import dev.javieraguilera.mysone.ui.today.dayHeading
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -182,6 +185,8 @@ private fun SettingsModelsContent(
                 summary = stringResource(R.string.models_wifi_only_desc),
                 checked = wifiOnly,
                 onCheckedChange = { wifiOnly = it },
+                // Se aplica al encolar: durante una descarga cambiarlo no haría nada.
+                enabled = installs.values.none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
@@ -303,11 +308,17 @@ private fun InstallState(
         ModelInstall.NotInstalled -> OutlinedButton(onClick = onDownload) { Text(stringResource(R.string.models_download, size)) }
         is ModelInstall.Downloading -> {
             val percent = (install.progress * 100).toInt().coerceIn(0, 100)
-            Progress(stringResource(R.string.models_downloading, percent), install.progress.coerceIn(0f, 1f))
+            val label = when (install.waiting) {
+                DownloadWait.WIFI -> R.string.asr_download_waiting_wifi
+                DownloadWait.NETWORK -> R.string.asr_download_waiting_network
+                null -> R.string.models_downloading
+            }
+            Progress(stringResource(label, percent), install.progress.coerceIn(0f, 1f))
             TextButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
         }
         ModelInstall.Verifying -> Progress(stringResource(R.string.models_verifying), null)
         ModelInstall.Installed -> {
+            StatusLine(stringResource(R.string.models_installed), ok = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = onTest, enabled = test != SelfTest.Running) { Text(stringResource(R.string.models_test)) }
                 TextButton(onClick = onDelete) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
@@ -370,7 +381,9 @@ private fun ImportRow(p: ImportProgress) {
             when {
                 p.error != null -> Text(p.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 p.done -> Text(
-                    stringResource(R.string.models_import_done),
+                    // Con la fecha del fichero puede quedar en otro día: se dice en cuál.
+                    p.startedAt?.let { stringResource(R.string.models_import_done_at, dayHeading(Time.dayKey(it)), Time.hourMinute(it)) }
+                        ?: stringResource(R.string.models_import_done),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.tertiary,
                 )
@@ -387,7 +400,7 @@ private fun ImportRow(p: ImportProgress) {
 @Composable
 private fun SettingsModelsPreview() {
     val catalog = listOf(
-        AsrModel("canary-180m-es", "Canary 180M (español)", "Recomendado. Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
+        AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
         AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB; recomendado con 8 GB de RAM o más.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
     )
     MysoneTheme {

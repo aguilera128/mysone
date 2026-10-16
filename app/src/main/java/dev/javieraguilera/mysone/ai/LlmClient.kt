@@ -5,6 +5,7 @@ import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.data.AiSettings
 import java.io.IOException
+import java.net.UnknownServiceException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -91,6 +92,9 @@ internal suspend fun OkHttpClient.postJson(url: String, headers: Map<String, Str
         }
         try {
             newCall(request).execute().use { HttpReply(it.code, it.body.string(), it.header("retry-after")) }
+        } catch (_: UnknownServiceException) {
+            // http:// que el networkSecurityConfig no deja (release): reintentar no lo arregla, hay que cambiar la URL.
+            throw LlmException(LlmErrorKind.SERVER, "Texto plano no permitido", retryable = false)
         } catch (e: IOException) {
             throw LlmException(LlmErrorKind.NETWORK, e.javaClass.simpleName)
         }

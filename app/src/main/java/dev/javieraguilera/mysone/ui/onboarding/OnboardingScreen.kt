@@ -65,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.AsrModel
+import dev.javieraguilera.mysone.asr.DownloadWait
 import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.container
@@ -368,6 +369,7 @@ private fun ModelStep(
     val context = LocalContext.current
     val selected = catalog.firstOrNull { it.id == selectedId }
     val size = selected?.let { Formatter.formatShortFileSize(context, it.sizeBytes) }.orEmpty()
+    val busy = install is ModelInstall.Downloading || install is ModelInstall.Verifying
     StepLayout(
         icon = Icons.Outlined.Download,
         title = stringResource(R.string.onb_model_title),
@@ -377,6 +379,10 @@ private fun ModelStep(
                     PrimaryButton(stringResource(if (install is ModelInstall.Failed) R.string.action_retry else R.string.onb_model_download, size), onDownload)
                     SecondaryButton(stringResource(R.string.onb_not_now), onNext)
                 }
+                is ModelInstall.Downloading -> {
+                    PrimaryButton(stringResource(R.string.onb_next), onNext)
+                    SecondaryButton(stringResource(R.string.onb_model_cancel), onCancel) // a la vista, no al final del scroll
+                }
                 else -> PrimaryButton(stringResource(R.string.onb_next), onNext)
             }
         },
@@ -384,13 +390,15 @@ private fun ModelStep(
         Paragraph(stringResource(R.string.onb_model_body))
         if (ramGb > 0) Paragraph(stringResource(R.string.onb_model_ram, ramGb), muted = true)
         catalog.forEach { model ->
+            val fits = ramGb == 0 || ramGb >= model.recommendedMinRamGb
             ModelOption(
                 model = model,
                 size = Formatter.formatShortFileSize(context, model.sizeBytes),
-                recommended = model.id == AppSettings().asrModelId,
-                fits = ramGb == 0 || ramGb >= model.recommendedMinRamGb,
+                // Con menos RAM de la que pide no se recomienda (Ajustes › Transcripción avisa igual).
+                recommended = model.id == AppSettings().asrModelId && fits,
+                fits = fits,
                 selected = model.id == selectedId,
-                enabled = install !is ModelInstall.Downloading && install !is ModelInstall.Verifying,
+                enabled = !busy,
                 onSelect = { onSelect(model.id) },
             )
         }
@@ -399,15 +407,16 @@ private fun ModelStep(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
-                .toggleable(value = wifiOnly, role = Role.Switch, onValueChange = onWifiOnlyChange),
+                // Se aplica al encolar: durante la descarga cambiarlo no haría nada.
+                .toggleable(value = wifiOnly, enabled = !busy, role = Role.Switch, onValueChange = onWifiOnlyChange),
         ) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.onb_wifi_only), style = MaterialTheme.typography.bodyLarge)
                 Text(stringResource(R.string.onb_wifi_only_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = wifiOnly, onCheckedChange = null)
+            Switch(checked = wifiOnly, onCheckedChange = null, enabled = !busy)
         }
-        InstallProgress(install, onCancel)
+        InstallProgress(install)
     }
 }
 
@@ -428,25 +437,29 @@ private fun ModelOption(model: AsrModel, size: String, recommended: Boolean, fit
                     Text(stringResource(R.string.onb_model_recommended), style = MaterialTheme.typography.labelMedium, color = c.tertiary)
                 }
                 Text(model.description, style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
-                Text(
-                    if (fits) size else "$size · ${stringResource(R.string.onb_model_needs_ram, model.recommendedMinRamGb)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (fits) c.onSurfaceVariant else c.error,
-                )
+                Text(size, style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant)
+                if (!fits) {
+                    Text(stringResource(R.string.models_low_ram, model.recommendedMinRamGb), style = MaterialTheme.typography.bodySmall, color = c.error)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun InstallProgress(install: ModelInstall, onCancel: () -> Unit) {
+private fun InstallProgress(install: ModelInstall) {
     when (install) {
         is ModelInstall.Downloading -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val progress = install.progress.coerceIn(0f, 1f)
-            Text(stringResource(R.string.onb_model_downloading, (progress * 100).toInt()), style = MaterialTheme.typography.titleSmall)
+            val percent = (progress * 100).toInt()
+            val label = when (install.waiting) {
+                DownloadWait.WIFI -> R.string.asr_download_waiting_wifi
+                DownloadWait.NETWORK -> R.string.asr_download_waiting_network
+                null -> R.string.onb_model_downloading
+            }
+            Text(stringResource(label, percent), style = MaterialTheme.typography.titleSmall)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Text(stringResource(R.string.onb_model_keep_going), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onCancel) { Text(stringResource(R.string.onb_model_cancel)) }
         }
         ModelInstall.Verifying -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.onb_model_verifying), style = MaterialTheme.typography.titleSmall)
@@ -507,7 +520,7 @@ private fun ReadyLine(label: String, ok: Boolean) {
 // --- Vistas previas con datos falsos ---
 
 private val previewModels = listOf(
-    AsrModel("canary-180m-es", "Canary 180M (español)", "Recomendado. Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
+    AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
     AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB; recomendado con 8 GB de RAM o más.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
 )
 

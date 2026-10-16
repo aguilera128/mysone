@@ -463,11 +463,12 @@ private fun TaskDialog(
         }
     }
     if (step == STEP_TIME) {
-        // Sin hora previa, las 09:00, igual que hace la IA con las fechas sin hora.
+        // Sin hora previa, las 09:00 o, si hoy ya han pasado, la próxima hora en punto.
         val current = remindAt?.let { Instant.ofEpochMilli(it).atZone(Time.zone()) }
+        val (defaultHour, defaultMinute) = defaultReminderTime(pickedDate ?: pickerDateOf(now), now)
         val state = rememberTimePickerState(
-            initialHour = current?.hour ?: 9,
-            initialMinute = current?.minute ?: 0,
+            initialHour = current?.hour ?: defaultHour,
+            initialMinute = current?.minute ?: defaultMinute,
             is24Hour = DateFormat.is24HourFormat(LocalContext.current),
         )
         TimePickerDialog(

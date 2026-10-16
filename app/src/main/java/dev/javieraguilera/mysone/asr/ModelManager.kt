@@ -41,9 +41,12 @@ data class AsrModel(
 
 data class ModelFile(val name: String, val url: String, val sizeBytes: Long, val sha256: String?)
 
+enum class DownloadWait { WIFI, NETWORK }
+
 sealed interface ModelInstall {
     data object NotInstalled : ModelInstall
-    data class Downloading(val progress: Float) : ModelInstall
+    /** [waiting]: DownloadManager la tiene en pausa (sin Wi-Fi, sin red o esperando para reintentar). */
+    data class Downloading(val progress: Float, val waiting: DownloadWait? = null) : ModelInstall
     data object Verifying : ModelInstall
     data object Installed : ModelInstall
     data class Failed(val message: String) : ModelInstall
@@ -211,7 +214,13 @@ class ModelManager(private val context: Context) {
                     else -> {
                         val done = model.files.filter { File(modelDir(model.id), it.name).length() == it.sizeBytes }
                             .sumOf { it.sizeBytes } + rows.sumOf { it.bytes }
-                        setState(model.id, ModelInstall.Downloading((done.toFloat() / model.sizeBytes).coerceIn(0f, 1f)))
+                        val paused = rows.filter { it.status == DownloadManager.STATUS_PAUSED }
+                        val waiting = when {
+                            paused.any { it.reason == DownloadManager.PAUSED_QUEUED_FOR_WIFI } -> DownloadWait.WIFI
+                            paused.isNotEmpty() -> DownloadWait.NETWORK
+                            else -> null
+                        }
+                        setState(model.id, ModelInstall.Downloading((done.toFloat() / model.sizeBytes).coerceIn(0f, 1f), waiting))
                         delay(1_000)
                     }
                 }

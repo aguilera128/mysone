@@ -64,6 +64,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.javieraguilera.mysone.BuildConfig
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.ai.AiPreset
@@ -153,18 +154,27 @@ class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
 
 private val LOCAL_HOSTS = setOf("10.0.2.2", "localhost", "127.0.0.1")
 
-/** https, o http solo hacia el propio equipo (servidor falso de pruebas en el emulador). */
-fun isValidBaseUrl(url: String): Boolean {
+/**
+ * https, o http solo hacia el propio equipo (servidor falso de pruebas en el emulador) y solo en debug: en
+ * release el networkSecurityConfig no deja texto plano y la petición fallaría como si no hubiera red (§9).
+ */
+fun isValidBaseUrl(url: String, allowLocalHttp: Boolean = BuildConfig.DEBUG): Boolean {
     val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return false
     val host = uri.host ?: return false
-    return uri.scheme == "https" || (uri.scheme == "http" && host in LOCAL_HOSTS)
+    return uri.scheme == "https" || (allowLocalHttp && uri.scheme == "http" && host in LOCAL_HOSTS)
+}
+
+/** La URL es la del preset, sin tocar: solo entonces valen su nombre y su aviso de privacidad. */
+fun isPresetUrl(ai: AiSettings): Boolean {
+    val preset = AiPresets.byId(ai.presetId)
+    return preset != null && !preset.editable && ai.baseUrl == preset.baseUrl
 }
 
 /** Nombre del proveedor para los avisos; en el personalizado o con otra URL, el dominio al que se envía. */
 @Composable
 fun providerName(ai: AiSettings): String {
     val preset = AiPresets.byId(ai.presetId)
-    return if (preset != null && !preset.editable && ai.baseUrl == preset.baseUrl) {
+    return if (preset != null && isPresetUrl(ai)) {
         stringResource(preset.nameRes)
     } else {
         runCatching { URI(ai.baseUrl).host }.getOrNull() ?: stringResource(R.string.ai_preset_custom)
@@ -288,6 +298,7 @@ private fun SettingsAiContent(
             provider = provider,
             host = runCatching { URI(ai.baseUrl).host }.getOrNull() ?: ai.baseUrl,
             preset = preset,
+            presetUrl = isPresetUrl(ai),
             onAccept = {
                 showConsent = false
                 onAccept()
@@ -444,7 +455,7 @@ private fun ConnectionFields(
 }
 
 @Composable
-private fun ConsentDialog(provider: String, host: String, preset: AiPreset?, onAccept: () -> Unit, onDismiss: () -> Unit) {
+private fun ConsentDialog(provider: String, host: String, preset: AiPreset?, presetUrl: Boolean, onAccept: () -> Unit, onDismiss: () -> Unit) {
     val discouraged = preset?.discouraged == true
     var understood by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
@@ -452,8 +463,13 @@ private fun ConsentDialog(provider: String, host: String, preset: AiPreset?, onA
         title = { Text(stringResource(R.string.settings_ai_consent_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.settings_ai_consent_body, provider, host))
-                preset?.noticeRes?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium) }
+                // Con otra URL, el destino es ese servidor: ni se repite el dominio ni valen las garantías del proveedor.
+                Text(
+                    if (presetUrl) stringResource(R.string.settings_ai_consent_body, provider, host)
+                    else stringResource(R.string.settings_ai_consent_body_host, host),
+                )
+                val notice = if (presetUrl) preset?.noticeRes else R.string.settings_ai_consent_other_server
+                notice?.let { Text(stringResource(it), style = MaterialTheme.typography.bodyMedium) }
                 if (discouraged) {
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                         Text(
@@ -503,5 +519,5 @@ private fun SettingsAiPreview() {
 @Preview(showBackground = true)
 @Composable
 private fun ConsentPreview() {
-    MysoneTheme { ConsentDialog("DeepSeek", "api.deepseek.com", AiPresets.byId("deepseek"), {}, {}) }
+    MysoneTheme { ConsentDialog("DeepSeek", "api.deepseek.com", AiPresets.byId("deepseek"), presetUrl = true, {}, {}) }
 }

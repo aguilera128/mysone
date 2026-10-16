@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -40,6 +41,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.ui.ask.AskScreen
 import dev.javieraguilera.mysone.ui.conversation.ConversationScreen
 import dev.javieraguilera.mysone.ui.memory.MemoryScreen
@@ -69,6 +71,13 @@ import dev.javieraguilera.mysone.ui.today.TodayScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    // Toda la interfaz en español aunque el sistema esté en otro idioma (§8): los textos propios ya lo están,
+    // pero los selectores de fecha y hora de Material 3 toman idioma y formato de 24 h de la configuración.
+    override fun attachBaseContext(newBase: Context) {
+        val config = Configuration(newBase.resources.configuration).apply { setLocale(Time.SPAIN) }
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
 
     /** Valor del extra [EXTRA_OPEN] aún sin aplicar a la navegación. */
     private var pendingOpen by mutableStateOf<String?>(null)

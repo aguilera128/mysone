@@ -21,4 +21,13 @@ class PickerTimeTest {
         val expected = ZonedDateTime.of(2026, 10, 25, 9, 0, 0, 0, madrid).toInstant().toEpochMilli()
         assertEquals(expected, pickerToEpoch(picker, 9, 0, madrid))
     }
+
+    @Test fun `aviso nuevo a las 9, o a la próxima hora en punto si hoy ya han pasado`() {
+        fun at(d: Int, h: Int, m: Int) = ZonedDateTime.of(2026, 10, d, h, m, 0, 0, madrid).toInstant().toEpochMilli()
+        val today = pickerDateOf(at(16, 13, 31), madrid)
+        assertEquals(9 to 0, defaultReminderTime(today, at(16, 8, 15), madrid))
+        assertEquals(14 to 0, defaultReminderTime(today, at(16, 13, 31), madrid))
+        assertEquals(23 to 59, defaultReminderTime(today, at(16, 23, 30), madrid))
+        assertEquals(9 to 0, defaultReminderTime(pickerDateOf(at(17, 12, 0), madrid), at(16, 13, 31), madrid))
+    }
 }

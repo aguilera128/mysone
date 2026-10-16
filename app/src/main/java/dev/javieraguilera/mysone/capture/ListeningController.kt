@@ -1,6 +1,10 @@
 package dev.javieraguilera.mysone.capture
 
 import android.content.Context
+import android.content.Intent
+import android.util.Log
+import androidx.core.content.ContextCompat
+import dev.javieraguilera.mysone.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,22 +20,48 @@ sealed interface ListeningStatus {
     data class Error(val message: String) : ListeningStatus
 }
 
-/** API de la escucha para la UI y los receivers. Contrato de docs/arquitectura.md §4 (lo implementa B1). */
+/**
+ * API de la escucha para la UI y los receivers (contrato de docs/arquitectura.md §4). Todo pasa por
+ * [ListeningService]; el estado vive en memoria del proceso, así que en un proceso nuevo empieza en Off.
+ */
 object ListeningController {
+    internal const val ACTION_START = "dev.javieraguilera.mysone.capture.START"
+    internal const val ACTION_STOP = "dev.javieraguilera.mysone.capture.STOP"
+    internal const val ACTION_PAUSE = "dev.javieraguilera.mysone.capture.PAUSE"
+    internal const val ACTION_RESUME = "dev.javieraguilera.mysone.capture.RESUME"
+    internal const val EXTRA_MINUTES = "minutes"
+    private const val TAG = "ListeningController"
+
     private val _status = MutableStateFlow<ListeningStatus>(ListeningStatus.Off)
     val status: StateFlow<ListeningStatus> = _status.asStateFlow()
 
-    /** Solo desde UI visible o interacción con una notificación (restricción while-in-use). */
-    fun start(context: Context) {}
+    /** Solo desde UI visible o interacción con una notificación (restricción while-in-use, 02 §3). */
+    fun start(context: Context) = send(context, ACTION_START, foreground = true)
 
-    fun stop(context: Context) {}
+    fun stop(context: Context) = send(context, ACTION_STOP)
 
-    fun pause(context: Context, minutes: Int) {}
+    fun pause(context: Context, minutes: Int) = send(context, ACTION_PAUSE, minutes.coerceAtLeast(1))
 
-    fun resume(context: Context) {}
+    fun resume(context: Context) = send(context, ACTION_RESUME, foreground = true)
 
     /** Lo usa el servicio para publicar su estado. */
     internal fun publish(s: ListeningStatus) {
         _status.value = s
+    }
+
+    internal fun intent(context: Context, action: String, minutes: Int = 0): Intent =
+        Intent(context, ListeningService::class.java).setAction(action).putExtra(EXTRA_MINUTES, minutes)
+
+    private fun send(context: Context, action: String, minutes: Int = 0, foreground: Boolean = false) {
+        val intent = intent(context, action, minutes)
+        try {
+            if (foreground) ContextCompat.startForegroundService(context, intent) else context.startService(intent)
+        } catch (e: IllegalStateException) { // ForegroundServiceStartNotAllowedException o arranque en segundo plano
+            Log.w(TAG, "No se puede arrancar el servicio: ${e.javaClass.simpleName}")
+            if (foreground) publish(ListeningStatus.Error(context.getString(R.string.capture_error_start)))
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No se puede arrancar el servicio: ${e.javaClass.simpleName}")
+            if (foreground) publish(ListeningStatus.Error(context.getString(R.string.capture_error_start)))
+        }
     }
 }

@@ -131,6 +131,28 @@ function tasksFrom(lines, ref, already, onlyReminders) {
 
 // ---------- Respuestas por ruta ----------
 
+const DAY_WORDS = {
+  uno: 1, primero: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11,
+  doce: 12, trece: 13, catorce: 14, quince: 15, 'dieciséis': 16, diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20,
+  veintiuno: 21, 'veintiún': 21, 'veintidós': 22, 'veintitrés': 23, veinticuatro: 24, veinticinco: 25, 'veintiséis': 26,
+  veintisiete: 27, veintiocho: 28, veintinueve: 29, treinta: 30, 'treinta y uno': 31,
+};
+const MONTHS = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre';
+// "Lucía cumple años el 20 de noviembre" y lo que da el ASR: "mi hermana lucía cumpleaños el veinte de noviembre".
+const BIRTHDAY_RE = new RegExp(`(\\p{L}+) cumple(?:años| años)? el (?:día )?(\\d{1,2}|treinta y uno|\\p{L}+) de (${MONTHS})`, 'giu');
+const NOT_NAMES = new Set(['que', 'quien', 'quién', 'él', 'ella', 'se', 'me', 'te', 'le', 'hoy', 'mañana', 'también', 'ya']);
+
+function birthdays(text) {
+  const out = [];
+  for (const m of text.matchAll(BIRTHDAY_RE)) {
+    const day = /^\d+$/.test(m[2]) ? Number(m[2]) : DAY_WORDS[m[2].toLowerCase()];
+    if (!day || day > 31 || NOT_NAMES.has(m[1].toLowerCase())) continue;
+    const text = `${cap(m[1].toLowerCase())} cumple años el ${day} de ${m[3].toLowerCase()}`;
+    if (!out.some((f) => f.text === text)) out.push({ text });
+  }
+  return out.slice(0, 3);
+}
+
 function processConversation(user) {
   const ref = parseIso(isoIn(tag(user, 'conversacion')) ?? '2026-01-01T09:00');
   const lines = transcript(user);
@@ -142,8 +164,7 @@ function processConversation(user) {
   const long = all.filter((s) => s.split(' ').length >= 3);
   const sentences = long.length ? long : all;
   const title = cap(cut(sentences[0].replace(/^[¿¡\s]+/, '').replace(/[\s.,;:!?]+$/, ''), 60));
-  const facts = [...lines.join(' ').matchAll(/(\p{Lu}\p{L}+) cumple(?: años)? el (\d{1,2} de \p{L}+)/gu)]
-    .slice(0, 3).map((m) => ({ text: `${m[1]} cumple años el ${m[2]}` }));
+  const facts = birthdays(lines.join(' '));
   return {
     title,
     summary: cut(sentences.slice(0, 2).join(' '), 300),
@@ -188,11 +209,32 @@ function answer(user) {
     return `Tienes ${pending.length} ${pending.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}:\n${pending.slice(0, 5).join('\n')}`;
   }
   // [c:12] jueves 15 de octubre de 2026, 18:42–18:50 · Título — Resumen
-  const first = tag(user, 'conversaciones').match(/^\[c:(\d+)\] ([^·\n]*)· ([^\n]*?) — ([^\n]*)$/m);
-  if (!first) return 'No lo encuentro en lo que has hablado. Prueba a buscarlo con otras palabras.';
-  const [, id, when_, title, summary] = first;
-  const said = summary.trim() || `hablaste de «${title.trim()}»`;
-  return `Lo más reciente que encuentro es del ${when_.trim()}: ${said} [c:${id}]`;
+  const convs = [...tag(user, 'conversaciones').matchAll(/^\[c:(\d+)\] ([^·\n]*)· ([^\n]*?) — ([^\n]*)$/gm)]
+    .map(([, id, when_, title, summary]) => ({ id, when: when_.trim(), title: title.trim(), summary: summary.trim(), lines: [] }));
+  // <fragmentos>: "[c:12] jueves 15 de octubre de 2026" y debajo "18:42:10 texto".
+  let current = null;
+  for (const line of tag(user, 'fragmentos').split('\n')) {
+    const head = line.match(/^\[c:(\d+)\] (.*)$/);
+    if (head) {
+      current = convs.find((c) => c.id === head[1]);
+      if (!current) convs.push(current = { id: head[1], when: head[2].trim(), title: '', summary: '', lines: [] });
+    } else if (current && /^\d{2}:\d{2}:\d{2} /.test(line)) {
+      current.lines.push(line.slice(9).trim());
+    }
+  }
+  if (convs.length === 0) return 'No lo encuentro en lo que has hablado. Prueba a buscarlo con otras palabras.';
+  // La que más palabras de la pregunta contiene (título, resumen y fragmentos); a igualdad, la más reciente.
+  const plain = (s) => norm(s).normalize('NFD').replace(/\p{M}/gu, '');
+  const words = [...new Set(plain(q).split(' ').filter((w) => w.length >= 4 && !STOP.has(w)))];
+  const score = (text) => { const t = ` ${plain(text)} `; return words.filter((w) => t.includes(` ${w}`)).length; };
+  let best = convs[0]; let bestScore = -1;
+  for (const c of convs) {
+    const s = score([c.title, c.summary, ...c.lines].join(' '));
+    if (s > bestScore) { best = c; bestScore = s; }
+  }
+  const quote = best.lines.map((l) => [score(l), l]).sort((a, b) => b[0] - a[0])[0];
+  const said = quote && quote[0] > 0 ? `«${quote[1]}»` : (best.summary || `hablaste de «${best.title}»`);
+  return `${bestScore > 0 ? 'Lo hablaste' : 'Lo más reciente que encuentro es'} el ${best.when}: ${said} [c:${best.id}]`;
 }
 
 function digest(user) {

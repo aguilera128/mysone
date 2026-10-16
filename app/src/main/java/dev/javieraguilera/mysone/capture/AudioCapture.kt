@@ -7,9 +7,14 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
+import dev.javieraguilera.mysone.BuildConfig
 import dev.javieraguilera.mysone.asr.SpeechChunk
 import dev.javieraguilera.mysone.asr.VadSegmenter
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.concurrent.thread
 import kotlin.math.log10
 
@@ -56,8 +61,9 @@ class AudioCapture(
             vad.close()
             return false
         }
+        val fake = if (BuildConfig.DEBUG) FakeMic.open(context) else null
         running = true
-        thread = thread(name = "mysone-capture") { loop(record, vad) }
+        thread = thread(name = "mysone-capture") { loop(record, vad, fake) }
         return true
     }
 
@@ -110,7 +116,7 @@ class AudioCapture(
         return record
     }
 
-    private fun loop(first: AudioRecord, vad: VadSegmenter) {
+    private fun loop(first: AudioRecord, vad: VadSegmenter, fake: FakeMic?) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         var record = first
         var t0 = System.currentTimeMillis() // instante de la muestra 0 del segmentador
@@ -153,6 +159,7 @@ class AudioCapture(
                     failed = true
                     break
                 }
+                fake?.fill(buf, n)
                 // Array nuevo en cada lectura: el segmentador puede quedarse con la referencia.
                 val frame = FloatArray(n) { buf[it] / 32768f }
                 for (s in frame) sumSq += s * s
@@ -198,5 +205,34 @@ class AudioCapture(
         /** RMS² a 0..1 en escala de -60 a 0 dBFS (en lineal, la voz a un metro sería casi siempre ≈ 0). */
         fun level(meanSquare: Double): Float =
             if (meanSquare <= 0) 0f else ((10 * log10(meanSquare) + 60) / 60).toFloat().coerceIn(0f, 1f)
+    }
+}
+
+/**
+ * Solo en debug (pruebas en emulador, AGENTS.md): si al empezar a capturar existe filesDir/debug/mic.pcm
+ * (PCM16 LE mono 16 kHz), sus muestras sustituyen a las del micro, frame a frame y a ritmo real; al acabarse
+ * se renombra a mic.pcm.done y siguen frames de silencio. El AudioRecord sigue abierto, así que el resto
+ * (indicador, silenciado, reapertura) es igual. En release `BuildConfig.DEBUG` es false y R8 lo quita.
+ */
+private class FakeMic(private val file: File) {
+    // ponytail: el fichero entero en memoria (1 min ≈ 2 MB); leerlo por trozos si se prueban horas.
+    private val pcm = ByteBuffer.wrap(file.readBytes()).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+    private val t0 = SystemClock.elapsedRealtime()
+    private var fed = 0L
+
+    fun fill(buf: ShortArray, n: Int) {
+        val k = minOf(n, pcm.remaining())
+        pcm.get(buf, 0, k)
+        buf.fill(0, k, n)
+        if (k < n && file.exists()) file.renameTo(File(file.path + ".done"))
+        fed += n
+        // Por si el read() del emulador no bloquea: nunca más deprisa que el tiempo real.
+        val ahead = fed * 1000 / AudioCapture.SR - (SystemClock.elapsedRealtime() - t0)
+        if (ahead > 0) Thread.sleep(ahead)
+    }
+
+    companion object {
+        fun open(context: Context): FakeMic? =
+            File(context.filesDir, "debug/mic.pcm").takeIf { it.isFile }?.let(::FakeMic)
     }
 }

@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cadenas de las pantallas Bienvenida, Hoy, Conversación y Buscar (módulo B5a). -->
+<resources>
+    <!-- Formatos compartidos (ui/today/Formats.kt) -->
+    <string name="ui_day_today">Hoy</string>
+    <string name="ui_day_yesterday">Ayer</string>
+    <string name="ui_duration_under_min">menos de 1 min</string>
+    <string name="ui_duration_min">%1$d min</string>
+    <string name="ui_duration_h">%1$d h</string>
+    <string name="ui_duration_h_min">%1$d h %2$d min</string>
+    <string name="ui_time_range">%1$s–%2$s</string>
+    <string name="ui_since">desde las %1$s</string>
+    <string name="ui_join">%1$s · %2$s</string>
+    <string name="ui_day_time">%1$s, %2$s</string>
+
+    <!-- Huecos de la escucha (GapReason) -->
+    <string name="gap_paused">En pausa</string>
+    <string name="gap_stopped">Escucha detenida</string>
+    <string name="gap_mic_busy">Micrófono ocupado</string>
+    <string name="gap_battery">Sin grabar por batería baja</string>
+    <string name="gap_error">Error de la escucha</string>
+    <string name="gap_killed">Android cerró la app</string>
+
+    <!-- Estado de una conversación -->
+    <string name="conv_state_transcribing">Transcribiendo…</string>
+    <string name="conv_state_open">En curso</string>
+    <string name="conv_state_processing">Resumiendo…</string>
+    <string name="conv_state_unprocessed">Sin procesar</string>
+    <string name="conv_state_failed">No se pudo procesar</string>
+    <string name="conv_noise">Ruido de fondo</string>
+    <string name="conv_imported">Importada</string>
+    <plurals name="conv_tasks_count">
+        <item quantity="one">%d tarea</item>
+        <item quantity="other">%d tareas</item>
+    </plurals>
+    <plurals name="conv_reminders_count">
+        <item quantity="one">%d recordatorio</item>
+        <item quantity="other">%d recordatorios</item>
+    </plurals>
+
+    <!-- Hoy -->
+    <string name="today_status_listening">Escuchando</string>
+    <string name="today_status_listening_body">El audio se borra en cuanto se transcribe.</string>
+    <string name="today_status_starting">Preparando la escucha…</string>
+    <string name="today_status_paused">En pausa hasta las %1$s</string>
+    <string name="today_status_paused_body">Se reanudará sola a esa hora.</string>
+    <string name="today_status_mic_busy">Micrófono ocupado</string>
+    <string name="today_status_mic_busy_body">Una llamada u otra app lo está usando. Mysone seguirá cuando quede libre.</string>
+    <string name="today_status_needs_model">Falta el modelo de transcripción</string>
+    <string name="today_status_needs_model_body">Descárgalo una vez para poder escuchar.</string>
+    <string name="today_status_needs_permission">Falta el permiso del micrófono</string>
+    <string name="today_status_needs_permission_body">Sin él, Mysone no puede escuchar.</string>
+    <string name="today_status_error">La escucha se ha detenido por un error</string>
+    <string name="today_status_off">Escucha detenida</string>
+    <string name="today_status_off_body">Mientras escucha verás una notificación fija. Puedes pausar en un toque.</string>
+    <string name="today_status_interrupted">La escucha se ha detenido</string>
+    <string name="today_status_interrupted_body">Android la cerró o el móvil se reinició.</string>
+    <string name="today_action_listen">Escuchar</string>
+    <string name="today_action_resume">Reanudar</string>
+    <string name="today_action_stop">Detener</string>
+    <string name="today_action_pause_15">Pausar 15 min</string>
+    <string name="today_action_pause_60">Pausar 1 h</string>
+    <string name="today_action_download_model">Descargar modelo</string>
+    <string name="today_action_grant">Dar permiso</string>
+    <string name="today_action_forget">Olvidar…</string>
+    <string name="today_forget_5">Los últimos 5 min</string>
+    <string name="today_forget_15">Los últimos 15 min</string>
+    <string name="today_forget_60">La última hora</string>
+    <string name="today_forget_title">¿Olvidar los últimos %1$d minutos?</string>
+    <string name="today_forget_message">Se borra lo que se transcribió en ese rato y lo que quedaba por transcribir. No se puede deshacer.</string>
+    <string name="today_forget_confirm">Olvidar</string>
+    <string name="today_forget_done">Olvidados los últimos %1$d min</string>
+    <string name="today_mic_denied">Sin permiso de micrófono no puedo escuchar</string>
+    <string name="today_open_system_settings">Ajustes</string>
+    <plurals name="today_pending">
+        <item quantity="one">%d fragmento por transcribir</item>
+        <item quantity="other">%d fragmentos por transcribir</item>
+    </plurals>
+    <string name="today_other_day">Otro día</string>
+    <string name="today_digest_title">Resumen del día</string>
+    <string name="today_timeline_title">Conversaciones</string>
+    <string name="today_empty_today">Todavía no hay conversaciones hoy</string>
+    <string name="today_empty_today_body">Cuando Mysone oiga hablar a alguien, aparecerá aquí.</string>
+    <string name="today_empty_day">No hay nada este día</string>
+    <string name="today_empty_day_body">Ese día no se guardó ninguna conversación.</string>
+    <string name="today_open_conversation">abrir la conversación</string>
+    <string name="today_level_meter">Nivel de sonido</string>
+
+    <!-- Conversación -->
+    <string name="conv_untitled">Conversación sin título</string>
+    <string name="conv_action_copy">Copiar transcripción</string>
+    <string name="conv_action_reprocess">Volver a procesar</string>
+    <string name="conv_action_delete">Borrar conversación</string>
+    <string name="conv_more">Más opciones</string>
+    <string name="conv_copied">Transcripción copiada</string>
+    <string name="conv_delete_title">¿Borrar esta conversación?</string>
+    <string name="conv_delete_message">Se borran su transcripción, el resumen y las tareas y datos que salieron de ella. No se puede deshacer.</string>
+    <string name="conv_reprocess_failed">No se pudo procesar. Revisa la IA en Ajustes.</string>
+    <string name="conv_banner_transcribing">Aún se está transcribiendo parte de esta conversación.</string>
+    <string name="conv_banner_processing">Resumiendo con IA…</string>
+    <string name="conv_banner_failed">No se pudo procesar: %1$s</string>
+    <string name="conv_banner_failed_generic">No se pudo procesar.</string>
+    <string name="conv_banner_no_ai">Sin resumen: la IA está desactivada. Puedes activarla en Ajustes.</string>
+    <string name="conv_banner_noise">Parece ruido de fondo (tele, radio…). No genera tareas.</string>
+    <string name="conv_summary">Resumen</string>
+    <string name="conv_key_points">Puntos clave</string>
+    <string name="conv_tasks">Tareas</string>
+    <string name="conv_facts">Para tu memoria</string>
+    <string name="conv_transcript">Transcripción</string>
+    <string name="conv_transcript_empty">La transcripción literal se borró al cumplirse el plazo de retención.</string>
+    <string name="conv_not_found">Esta conversación ya no existe</string>
+    <string name="conv_cited">Fragmento citado</string>
+    <string name="conv_quote">«%1$s»</string>
+    <string name="task_accept">Aceptar</string>
+    <string name="task_dismiss">Descartar</string>
+    <string name="task_suggested">Sugerida</string>
+    <string name="task_open">Pendiente</string>
+    <string name="task_done">Hecha</string>
+    <string name="task_remind_at">Aviso: %1$s</string>
+    <string name="task_due_at">Para: %1$s</string>
+    <string name="fact_confirm">Guardar</string>
+    <string name="fact_dismiss">Descartar</string>
+    <string name="fact_suggested">Sugerido</string>
+    <string name="fact_confirmed">En tu memoria</string>
+
+    <!-- Buscar -->
+    <string name="search_hint">Busca en lo que has oído</string>
+    <string name="search_clear">Borrar la búsqueda</string>
+    <string name="search_idle_title">Busca palabras de tus conversaciones</string>
+    <string name="search_idle_body">Por ejemplo: presupuesto, Lucía o dentista. La búsqueda se hace en el teléfono.</string>
+    <string name="search_empty_title">Sin resultados</string>
+    <string name="search_empty_body">«%1$s» no aparece en tus transcripciones.</string>
+    <plurals name="search_results">
+        <item quantity="one">%d resultado</item>
+        <item quantity="other">%d resultados</item>
+    </plurals>
+    <string name="search_open">abrir en la conversación</string>
+
+    <!-- Bienvenida -->
+    <string name="onb_step">Paso %1$d de %2$d</string>
+    <string name="onb_next">Continuar</string>
+    <string name="onb_back">Atrás</string>
+    <string name="onb_not_now">Ahora no</string>
+    <string name="onb_open_settings">Abrir ajustes del sistema</string>
+
+    <string name="onb_intro_title">Lo que hablas, apuntado</string>
+    <string name="onb_intro_body">Mysone escucha en segundo plano, transcribe en tu móvil y ordena lo oído en conversaciones con fecha y hora.</string>
+    <string name="onb_intro_does">Qué hace</string>
+    <string name="onb_intro_does_1">Transcribe en el teléfono, sin mandar el audio a ningún sitio.</string>
+    <string name="onb_intro_does_2">Agrupa lo oído en conversaciones y te deja buscar en todas.</string>
+    <string name="onb_intro_does_3">Con IA (opcional): resúmenes, tareas, recordatorios y respuestas a tus preguntas.</string>
+    <string name="onb_intro_doesnt">Qué no hace</string>
+    <string name="onb_intro_doesnt_1">No guarda audio: se borra en cuanto se transcribe.</string>
+    <string name="onb_intro_doesnt_2">No envía nada a internet salvo que actives la IA.</string>
+    <string name="onb_intro_doesnt_3">No graba llamadas de teléfono ni distingue quién habla.</string>
+
+    <string name="onb_legal_title">Antes de empezar</string>
+    <string name="onb_legal_intro">Mysone escucha de forma continua mientras ves su notificación, transcribe en el teléfono y borra el audio. Guarda texto con fecha y hora.</string>
+    <string name="onb_legal_1_lead">Solo conversaciones en las que participas.</string>
+    <string name="onb_legal_1_body">En España puedes guardar las conversaciones en las que tomas parte. Grabar conversaciones ajenas (la llamada de otra persona, la mesa de al lado) puede ser delito (art. 197 del Código Penal). Si dejas el móvil en una sala sin ti, pausa la escucha.</string>
+    <string name="onb_legal_2_lead">Avisa a quien grabes.</string>
+    <string name="onb_legal_2_body">Sobre todo en el trabajo o con clientes: ahí se aplica la normativa de protección de datos.</string>
+    <string name="onb_legal_3_lead">No difundas las transcripciones.</string>
+    <string name="onb_legal_3_body">Compartirlas puede vulnerar la intimidad de otras personas aunque la conversación fuera tuya.</string>
+    <string name="onb_legal_4_lead">Sin audio y en tu teléfono.</string>
+    <string name="onb_legal_4_body">Por defecto nada sale del móvil. Si activas la IA, verás qué se envía y a quién.</string>
+    <string name="onb_legal_5_lead">Pausa y olvida cuando quieras.</string>
+    <string name="onb_legal_5_body">Desde la notificación o desde Hoy. «Olvidar» borra los últimos minutos.</string>
+    <string name="onb_legal_disclaimer">Esto no es asesoramiento jurídico.</string>
+    <string name="onb_legal_check">He leído el aviso y usaré Mysone solo en conversaciones en las que participo.</string>
+    <string name="onb_legal_accepted">Aceptado el %1$s</string>
+    <string name="onb_legal_accept">Acepto y continúo</string>
+
+    <string name="onb_mic_title">Permiso del micrófono</string>
+    <string name="onb_mic_body">Mysone necesita el micrófono para escuchar. Mientras escucha verás una notificación fija y el indicador de micrófono de Android; desde la notificación puedes pausar o detener.</string>
+    <string name="onb_mic_grant">Permitir el micrófono</string>
+    <string name="onb_mic_granted">Micrófono permitido</string>
+    <string name="onb_mic_denied">Sin el micrófono no puedo escuchar. Puedes darlo en los ajustes del sistema.</string>
+
+    <string name="onb_notif_title">Notificaciones</string>
+    <string name="onb_notif_body">Sirven para avisarte de tus recordatorios y de si la escucha se detiene. Nunca muestran lo que se ha dicho.</string>
+    <string name="onb_notif_grant">Permitir notificaciones</string>
+    <string name="onb_notif_granted">Notificaciones permitidas</string>
+    <string name="onb_notif_denied">Sin notificaciones no verás los recordatorios. Puedes activarlas en los ajustes del sistema.</string>
+
+    <string name="onb_model_title">Modelo de transcripción</string>
+    <string name="onb_model_body">La transcripción se hace en tu móvil con un modelo que se descarga una sola vez.</string>
+    <string name="onb_model_ram">Tu móvil tiene %1$d GB de RAM.</string>
+    <string name="onb_model_recommended">Recomendado</string>
+    <string name="onb_model_needs_ram">Pide %1$d GB de RAM o más</string>
+    <string name="onb_wifi_only">Descargar solo con Wi-Fi</string>
+    <string name="onb_wifi_only_body">Si ahora no hay Wi-Fi, la descarga esperará.</string>
+    <string name="onb_model_download">Descargar (%1$s)</string>
+    <string name="onb_model_downloading">Descargando… %1$d %%</string>
+    <string name="onb_model_verifying">Comprobando el archivo…</string>
+    <string name="onb_model_installed">Modelo listo</string>
+    <string name="onb_model_failed">La descarga ha fallado: %1$s</string>
+    <string name="onb_model_cancel">Cancelar descarga</string>
+    <string name="onb_model_keep_going">La descarga sigue aunque continúes.</string>
+
+    <string name="onb_ai_title">Inteligencia artificial (opcional)</string>
+    <string name="onb_ai_body_1">Sin IA, Mysone transcribe, ordena y busca. Con IA, además resume cada conversación, saca tareas y recordatorios y responde a tus preguntas sobre lo que has oído.</string>
+    <string name="onb_ai_body_2">Necesitas una clave de un proveedor (Anthropic, Mistral u otro compatible). Se envía texto de tus transcripciones, nunca el audio, y antes verás a quién.</string>
+    <string name="onb_ai_later">Está desactivada. Puedes configurarla cuando quieras en Ajustes › Inteligencia artificial.</string>
+
+    <string name="onb_start_title">Todo listo</string>
+    <string name="onb_start_body">Al empezar verás la notificación de Mysone. Puedes pausar o detener desde ella o desde Hoy.</string>
+    <string name="onb_start_mic">Micrófono</string>
+    <string name="onb_start_model">Modelo de transcripción</string>
+    <string name="onb_start_missing">Cuando esté todo, pulsa Escuchar en Hoy.</string>
+    <string name="onb_start_listen">Empezar a escuchar</string>
+    <string name="onb_start_go_today">Ir a Hoy</string>
+    <string name="onb_check_ok">listo</string>
+    <string name="onb_check_missing">pendiente</string>
+</resources>

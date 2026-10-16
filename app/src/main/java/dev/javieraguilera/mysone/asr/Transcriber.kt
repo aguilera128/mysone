@@ -1,11 +1,28 @@
 package dev.javieraguilera.mysone.asr
 
 import android.content.Context
+import android.util.Log
+import com.k2fsa.sherpa.onnx.OfflineCanaryModelConfig
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
+import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.data.SettingsStore
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
+/** Estado del reconocedor en memoria. NoModel = no hay ninguno cargado (no instalado o ya liberado). */
 sealed interface TranscriberState {
     data object NoModel : TranscriberState
     data object Loading : TranscriberState
@@ -13,7 +30,7 @@ sealed interface TranscriberState {
     data class Error(val message: String) : TranscriberState
 }
 
-/** Reconocedor offline compartido (una sola instancia, en AppContainer). Lo implementa B2. */
+/** Reconocedor offline compartido (una sola instancia, en AppContainer). */
 class Transcriber(
     private val context: Context,
     private val models: ModelManager,
@@ -22,12 +39,142 @@ class Transcriber(
     private val _state = MutableStateFlow<TranscriberState>(TranscriberState.NoModel)
     val state: StateFlow<TranscriberState> = _state.asStateFlow()
 
-    /** Carga el modelo elegido si hace falta (refcount); false si no hay modelo o falla. */
-    suspend fun acquire(): Boolean = false
+    private val mutex = Mutex() // protege todo lo de abajo y serializa el trabajo nativo
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var recognizer: OfflineRecognizer? = null
+    private var refs = 0
 
-    /** Al llegar a 0 libera la memoria nativa. */
-    fun release() {}
+    /**
+     * Carga el modelo elegido si hace falta (refcount); false si no hay modelo o falla.
+     * Si ya hay uno cargado se comparte aunque en Ajustes hayan elegido otro: el cambio se aplica
+     * cuando todos lo sueltan (cambiarlo en caliente dejaría sin reconocedor a la escucha si el nuevo falla).
+     */
+    suspend fun acquire(): Boolean = mutex.withLock {
+        if (recognizer == null && !load(settings.current().asrModelId)) return@withLock false
+        refs++
+        true
+    }
 
-    /** Serializado con Mutex; devuelve texto limpio. */
-    suspend fun transcribe(samples: FloatArray, sampleRate: Int = 16_000): String = ""
+    /** Al llegar a 0 libera la memoria nativa. No bloquea: espera a que acabe la transcripción en curso. */
+    fun release() {
+        scope.launch {
+            mutex.withLock {
+                if (refs > 0) refs--
+                if (refs == 0) free()
+            }
+        }
+    }
+
+    /**
+     * Serializado con Mutex; devuelve texto limpio ("" si no se ha dicho nada).
+     * Lanza IllegalStateException sin [acquire] previo: así el trozo no se da por vacío y se reintenta.
+     */
+    suspend fun transcribe(samples: FloatArray, sampleRate: Int = SAMPLE_RATE): String = mutex.withLock {
+        val rec = checkNotNull(recognizer) { "Transcriber sin modelo: falta acquire()" }
+        withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate) }
+    }
+
+    private suspend fun load(id: String): Boolean {
+        val model = models.catalog.find { it.id == id }
+        if (model == null || !models.isInstalled(id)) {
+            _state.value = TranscriberState.NoModel
+            return false
+        }
+        _state.value = TranscriberState.Loading
+        // NonCancellable: cancelado a medias, el reconocedor nativo se quedaría sin liberar hasta el GC.
+        val error: Int? = withContext(NonCancellable + Dispatchers.Default) {
+            var rec: OfflineRecognizer? = null
+            try {
+                rec = createRecognizer(model, models.modelDir(id))
+                // Autoprueba (§5.4): hay móviles en los que el modelo carga pero no devuelve nada.
+                if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE).isEmpty()) {
+                    R.string.asr_error_empty
+                } else {
+                    recognizer = rec
+                    rec = null
+                    null
+                }
+            } catch (e: Throwable) { // también UnsatisfiedLinkError si la librería nativa no carga
+                Log.w(TAG, "No se pudo cargar el modelo $id: ${e.javaClass.simpleName}")
+                R.string.asr_error_load
+            } finally {
+                rec?.release() // solo si no se ha quedado
+            }
+        }
+        if (error != null) {
+            _state.value = TranscriberState.Error(context.getString(error))
+            return false
+        }
+        _state.value = TranscriberState.Ready(id)
+        return true
+    }
+
+    private fun free() {
+        recognizer?.release()
+        recognizer = null
+        if (_state.value is TranscriberState.Ready) _state.value = TranscriberState.NoModel
+    }
+
+    private companion object {
+        const val TAG = "MysoneAsr"
+    }
 }
+
+/** Construye el reconocedor desde ficheros (assetManager = null). Comprueba antes ficheros y tamaños:
+ *  un modelo roto en sherpa-onnx mata el proceso en vez de lanzar excepción (03 §3.2). */
+internal fun createRecognizer(model: AsrModel, dir: File): OfflineRecognizer {
+    check(model.hasFilesIn(dir)) { "faltan ficheros del modelo ${model.id}" }
+    val path = { name: String -> File(dir, name).absolutePath }
+    val modelConfig = when (model.id) {
+        // modelType vacío, como el ejemplo Canary de getOfflineModelConfig() en el AAR 1.13.8 (comprobado con javap)
+        "canary-180m-es" -> OfflineModelConfig(
+            canary = OfflineCanaryModelConfig(
+                encoder = path("encoder.int8.onnx"),
+                decoder = path("decoder.int8.onnx"),
+                srcLang = "es",
+                tgtLang = "es",
+                usePnc = true,
+            ),
+            tokens = path("tokens.txt"),
+            numThreads = 2,
+        )
+        "parakeet-v3" -> OfflineModelConfig(
+            transducer = OfflineTransducerModelConfig(
+                encoder = path("encoder.int8.onnx"),
+                decoder = path("decoder.int8.onnx"),
+                joiner = path("joiner.int8.onnx"),
+            ),
+            tokens = path("tokens.txt"),
+            modelType = "nemo_transducer",
+            numThreads = 2,
+        )
+        else -> error("modelo sin configuración: ${model.id}")
+    }
+    // FeatureConfig por defecto (16 kHz, 80): Canary y NeMo lo sobrescriben con los metadatos del modelo.
+    return OfflineRecognizer(assetManager = null, config = OfflineRecognizerConfig(modelConfig = modelConfig))
+}
+
+internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: Int): String {
+    if (samples.size < sampleRate / 10) return "" // < 0,1 s: nada que reconocer
+    val stream = createStream()
+    try {
+        stream.acceptWaveform(samples, sampleRate)
+        decode(stream)
+        return cleanText(getResult(stream).text)
+    } finally {
+        stream.release()
+    }
+}
+
+private val WHITESPACE = Regex("\\s+")
+private val LETTER_OR_DIGIT = Regex("[\\p{L}\\p{N}]")
+
+/** Espacios normalizados. Sin letras ni cifras (".", "¿?" sobre ruido) cuenta como nada dicho. */
+internal fun cleanText(raw: String): String {
+    val text = raw.trim().replace(WHITESPACE, " ")
+    return if (LETTER_OR_DIGIT.containsMatchIn(text)) text else ""
+}
+
+/** assets/selftest_es.wav: frase TTS en español, PCM16 mono 16 kHz. */
+internal fun selfTestSamples(context: Context): FloatArray =
+    PcmFiles.readWav(context.assets.open("selftest_es.wav").use { it.readBytes() })

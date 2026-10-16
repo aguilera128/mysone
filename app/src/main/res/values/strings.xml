@@ -10,9 +10,7 @@
     <string name="nav_memory">Memoria</string>
 
     <!-- Títulos de pantalla -->
-    <string name="title_onboarding">Bienvenida</string>
     <string name="title_conversation">Conversación</string>
-    <string name="title_search">Buscar</string>
     <string name="title_settings">Ajustes</string>
     <string name="title_settings_ai">Inteligencia artificial</string>
     <string name="title_settings_models">Transcripción</string>
@@ -23,15 +21,11 @@
     <string name="action_back">Volver</string>
     <string name="action_cancel">Cancelar</string>
     <string name="action_accept">Aceptar</string>
-    <string name="action_confirm">Confirmar</string>
     <string name="action_delete">Borrar</string>
     <string name="action_save">Guardar</string>
     <string name="action_edit">Editar</string>
-    <string name="action_add">Añadir</string>
-    <string name="action_copy">Copiar</string>
     <string name="action_retry">Reintentar</string>
     <string name="action_close">Cerrar</string>
-    <string name="action_start">Empezar</string>
     <string name="action_search">Buscar</string>
     <string name="action_settings">Ajustes</string>
 

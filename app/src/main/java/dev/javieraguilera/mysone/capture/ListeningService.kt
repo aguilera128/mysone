@@ -307,6 +307,9 @@ class ListeningService : Service() {
         ResumeNotifier.cancel(this)
         clearPause()
         stopCapture()
+        // Off cuando lo último que oyó la VAD ya está en la cola: "Borrar todo" espera a este estado.
+        chunks?.close()
+        queueJob?.join()
         ListeningController.publish(Off) // para la UI ya está detenida; la notificación dice "terminando"
         endSession(GapReason.STOPPED, drain = true)
     }

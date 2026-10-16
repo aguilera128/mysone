@@ -199,7 +199,13 @@ private fun MysoneNav(
                 }
                 entry<ConversationDetail> { key -> ConversationScreen(id = key.id, segmentId = key.segmentId, onBack = back) }
                 entry<Search> { SearchScreen(onOpenConversation = openConversation, onBack = back) }
-                entry<Ask> { AskScreen(onOpenConversation = openConversation, onOpenAiSettings = { backStack.add(SettingsAi) }) }
+                entry<Ask> {
+                    AskScreen(
+                        onOpenConversation = openConversation,
+                        onOpenAiSettings = { backStack.add(SettingsAi) },
+                        onOpenSearch = { backStack.add(Search) },
+                    )
+                }
                 entry<Tasks> { key -> TasksScreen(highlightTaskId = key.highlightTaskId, onOpenConversation = openConversation) }
                 entry<Memory> { MemoryScreen(onOpenConversation = openConversation) }
                 entry<Settings> {

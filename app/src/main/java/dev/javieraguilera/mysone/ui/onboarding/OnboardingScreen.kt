@@ -1,6 +1,7 @@
 package dev.javieraguilera.mysone.ui.onboarding
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -80,6 +81,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     val installs by vm.models.installs.collectAsStateWithLifecycle()
     val legalAcceptedAt by vm.legalAcceptedAt.collectAsStateWithLifecycle()
     val mic = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
+    @SuppressLint("InlinedApi") // el paso de notificaciones solo existe desde Android 13 (OnboardingViewModel.steps)
     val notifications = rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS)
     val install = installs[vm.selectedModelId] ?: ModelInstall.NotInstalled
     // isInstalled mira el disco: solo se vuelve a preguntar cuando cambia el estado de la descarga.

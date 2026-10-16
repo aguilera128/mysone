@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -115,7 +116,6 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import kotlin.math.sqrt
 import kotlinx.coroutines.launch
 
 /** Días que ofrece la tira de arriba (hoy incluido); los anteriores, con el calendario. */
@@ -132,6 +132,7 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
     val pending by vm.pendingChunks.collectAsStateWithLifecycle()
     val listeningEnabled by vm.listeningEnabled.collectAsStateWithLifecycle()
 
+    val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val mic = rememberPermissionState(Manifest.permission.RECORD_AUDIO) { granted ->
@@ -140,8 +141,8 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
         } else {
             scope.launch {
                 val result = snackbar.showSnackbar(
-                    context.getString(R.string.today_mic_denied),
-                    actionLabel = context.getString(R.string.today_open_system_settings),
+                    resources.getString(R.string.today_mic_denied),
+                    actionLabel = resources.getString(R.string.today_open_system_settings),
                 )
                 if (result == SnackbarResult.ActionPerformed) openAppSettings(context)
             }
@@ -169,7 +170,7 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
                 onOpenModels = onOpenModels,
                 onForget = { minutes ->
                     vm.forget(minutes)
-                    scope.launch { snackbar.showSnackbar(context.getString(R.string.today_forget_done, minutes)) }
+                    scope.launch { snackbar.showSnackbar(resources.getString(R.string.today_forget_done, minutes)) }
                 },
             )
         },
@@ -454,8 +455,8 @@ private fun LevelMeter(level: Float) {
     val history = remember { mutableStateListOf<Float>().apply { repeat(bars) { add(0f) } } }
     var smoothed by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(level) {
-        // ponytail: raíz cuadrada para que el RMS de una voz normal (0,05–0,2) se vea; recalibrar si B1 ya lo escala.
-        smoothed = smoothed * 0.6f + sqrt(level.coerceIn(0f, 1f)) * 0.4f
+        // El nivel ya llega en escala de -60 a 0 dBFS (AudioCapture.level).
+        smoothed = smoothed * 0.6f + level.coerceIn(0f, 1f) * 0.4f
         history.removeAt(0)
         history.add(smoothed)
     }

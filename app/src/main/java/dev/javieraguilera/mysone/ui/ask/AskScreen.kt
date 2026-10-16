@@ -76,7 +76,7 @@ import dev.javieraguilera.mysone.ui.settings.providerName
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 
 @Composable
-fun AskScreen(onOpenConversation: (Long, Long?) -> Unit, onOpenAiSettings: () -> Unit) {
+fun AskScreen(onOpenConversation: (Long, Long?) -> Unit, onOpenAiSettings: () -> Unit, onOpenSearch: () -> Unit) {
     val container = LocalContext.current.container
     val vm = viewModel { AskViewModel(container) }
     val messages by vm.messages.collectAsStateWithLifecycle()
@@ -97,6 +97,7 @@ fun AskScreen(onOpenConversation: (Long, Long?) -> Unit, onOpenAiSettings: () ->
         onClearChat = vm::clearChat,
         onOpenConversation = { onOpenConversation(it, null) },
         onOpenAiSettings = onOpenAiSettings,
+        onOpenSearch = onOpenSearch,
     )
 }
 
@@ -113,6 +114,7 @@ private fun AskContent(
     onClearChat: () -> Unit,
     onOpenConversation: (Long) -> Unit,
     onOpenAiSettings: () -> Unit,
+    onOpenSearch: () -> Unit,
 ) {
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -136,7 +138,12 @@ private fun AskContent(
                     title = stringResource(R.string.ask_off_title),
                     message = stringResource(R.string.ask_off_message),
                     icon = Icons.Outlined.AutoAwesome,
-                    action = { Button(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_off_action)) } },
+                    action = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Button(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_off_action)) }
+                            TextButton(onClick = onOpenSearch) { Text(stringResource(R.string.ask_off_search)) }
+                        }
+                    },
                 )
                 true -> {
                     Box(Modifier.weight(1f)) {
@@ -371,6 +378,7 @@ private fun AskPreview() {
             onClearChat = {},
             onOpenConversation = {},
             onOpenAiSettings = {},
+            onOpenSearch = {},
         )
     }
 }
@@ -379,6 +387,6 @@ private fun AskPreview() {
 @Composable
 private fun AskEmptyPreview() {
     MysoneTheme {
-        AskContent(emptyList(), true, "Mistral (UE)", null, AiError.RATE, {}, {}, {}, {}, {}, {})
+        AskContent(emptyList(), true, "Mistral (UE)", null, AiError.RATE, {}, {}, {}, {}, {}, {}, {})
     }
 }

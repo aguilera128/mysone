@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ui.conversation
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -113,6 +114,8 @@ class ConversationViewModel(private val container: AppContainer, private val id:
             loaded.segments.forEach { appendLine("[${Time.hourMinuteSecond(it.startedAt)}] ${it.text}") }
         }.trimEnd()
         val clip = ClipData.newPlainText(container.app.getString(R.string.app_name), text)
+        // Antes de Android 13 la constante no existe, pero teclados y portapapeles leen la misma clave literal.
+        @SuppressLint("InlinedApi")
         clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
         container.app.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
     }

@@ -32,8 +32,11 @@ class AskEngine(private val container: AppContainer) {
         if (q.isEmpty()) return Result.failure(IllegalArgumentException("Pregunta vacía"))
         val cfg = aiConfig(container) ?: return Result.failure(notConfigured())
         val chat = container.db.chat()
-        val history = chat.recent(HISTORY).reversed()
-        chat.insert(ChatMessage(role = ChatRole.USER, text = q, createdAt = System.currentTimeMillis()))
+        val recent = chat.recent(HISTORY + 1).reversed()
+        // Reintento tras un fallo: la pregunta sigue guardada y sin respuesta, no se duplica.
+        val retry = recent.lastOrNull()?.let { it.role == ChatRole.USER && it.text == q } == true
+        val history = (if (retry) recent.dropLast(1) else recent).takeLast(HISTORY)
+        if (!retry) chat.insert(ChatMessage(role = ChatRole.USER, text = q, createdAt = System.currentTimeMillis()))
         return try {
             val zone = Time.zone()
             val now = System.currentTimeMillis()

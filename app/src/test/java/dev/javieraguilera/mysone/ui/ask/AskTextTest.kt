@@ -1,5 +1,7 @@
 package dev.javieraguilera.mysone.ui.ask
 
+import dev.javieraguilera.mysone.ai.LlmErrorKind
+import dev.javieraguilera.mysone.ai.LlmException
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -17,15 +19,12 @@ class AskTextTest {
         assertEquals(emptyList<Long>(), r.ids)
     }
 
-    /** Imita a LlmException de B3: lo que cuenta es la propiedad `kind`. */
-    enum class Kind { AUTH, RATE, BAD_OUTPUT }
-
-    class FakeLlmException(val kind: Kind) : Exception("sin contenido")
+    private fun llm(kind: LlmErrorKind) = LlmException(kind, "HTTP")
 
     @Test fun `clasifica por kind, por la causa o como red`() {
-        assertEquals(AiError.AUTH, classifyAiError(FakeLlmException(Kind.AUTH)))
-        assertEquals(AiError.RATE, classifyAiError(RuntimeException(FakeLlmException(Kind.RATE))))
-        assertEquals(AiError.BAD_OUTPUT, classifyAiError(FakeLlmException(Kind.BAD_OUTPUT)))
+        assertEquals(AiError.AUTH, classifyAiError(llm(LlmErrorKind.AUTH)))
+        assertEquals(AiError.RATE, classifyAiError(RuntimeException(llm(LlmErrorKind.RATE))))
+        assertEquals(AiError.BAD_OUTPUT, classifyAiError(llm(LlmErrorKind.BAD_OUTPUT)))
         assertEquals(AiError.NETWORK, classifyAiError(IOException("timeout")))
         assertEquals(AiError.OTHER, classifyAiError(IllegalStateException()))
     }

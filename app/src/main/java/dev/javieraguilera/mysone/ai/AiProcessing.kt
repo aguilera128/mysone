@@ -107,13 +107,13 @@ class AiProcessing(private val container: AppContainer) {
                 c.copy(
                     state = if (contentError) ConvState.FAILED else ConvState.READY,
                     processAttempts = c.processAttempts + if (contentError) 1 else 0,
-                    lastError = "${e.kind}: ${e.message}",
+                    lastError = "${container.app.getString(e.kind.messageRes)} (${e.message})", // se muestra tal cual en Conversación
                 ),
             )
             Result.failure(e)
         } catch (e: Exception) {
             Sentry.captureException(e)
-            dao.update(c.copy(state = ConvState.FAILED, processAttempts = c.processAttempts + 1, lastError = e.javaClass.simpleName))
+            dao.update(c.copy(state = ConvState.FAILED, processAttempts = c.processAttempts + 1, lastError = null)) // la UI da el mensaje genérico
             Result.failure(e)
         }
     }

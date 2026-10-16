@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.ui.ask
 
 import androidx.annotation.StringRes
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.ai.LlmException
 import java.io.IOException
 
 /** Respuesta sin los marcadores [c:ID] y los IDs citados, en orden de aparición y sin repetir. */
@@ -23,15 +24,11 @@ fun parseCitations(raw: String): CitedText {
 /** Tipos de fallo de la IA que la UI explica de forma distinta (los de LlmErrorKind de B3). */
 enum class AiError { NETWORK, AUTH, RATE, SERVER, BAD_OUTPUT, REFUSAL, OTHER }
 
-// ponytail: LlmException es de B3 y desde esta rama no se ve; se lee su `kind` por reflexión.
-// Al integrar, cambiar por `(e as? LlmException)?.kind`: con R8 en release la reflexión puede fallar y caer en OTHER.
 fun classifyAiError(e: Throwable): AiError {
     val chain = generateSequence(e) { it.cause }
-    val kind = chain.firstNotNullOfOrNull { t ->
-        runCatching { (t.javaClass.getMethod("getKind").invoke(t) as Enum<*>).name }.getOrNull()
-    }
+    val kind = chain.firstNotNullOfOrNull { (it as? LlmException)?.kind }
     return when {
-        kind != null -> AiError.entries.firstOrNull { it.name == kind } ?: AiError.OTHER
+        kind != null -> AiError.valueOf(kind.name)
         chain.any { it is IOException } -> AiError.NETWORK
         else -> AiError.OTHER
     }

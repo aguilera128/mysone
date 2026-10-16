@@ -7,8 +7,9 @@
     <string name="ask_clear_title">¿Borrar el chat?</string>
     <string name="ask_clear_message">Se borran las preguntas y respuestas. Tus conversaciones, tareas y recuerdos no se tocan.</string>
     <string name="ask_off_title">Preguntar necesita la IA</string>
-    <string name="ask_off_message">Para responder, Mysone envía a un proveedor de IA un extracto de tus transcripciones. Está desactivada hasta que elijas proveedor, pongas tu clave y aceptes el aviso. Mientras, puedes usar la búsqueda desde Hoy: funciona sin conexión.</string>
+    <string name="ask_off_message">Para responder, Mysone envía a un proveedor de IA un extracto de tus transcripciones. Está desactivada hasta que elijas proveedor, pongas tu clave y aceptes el aviso. Mientras, puedes buscar en lo escuchado: funciona sin conexión.</string>
     <string name="ask_off_action">Configurar la IA</string>
+    <string name="ask_off_search">Buscar en lo escuchado</string>
     <string name="ask_intro_title">¿Qué quieres recordar?</string>
     <string name="ask_intro_message">Pregunta en lenguaje natural por lo que has hablado. Cada respuesta enlaza con las conversaciones de las que sale.</string>
     <string name="ask_suggestion_pending">¿Qué tengo pendiente?</string>

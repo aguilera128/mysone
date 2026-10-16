@@ -55,6 +55,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -98,12 +99,13 @@ fun ConversationScreen(id: Long, segmentId: Long?, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val aiConfigured by vm.aiConfigured.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(message) {
         val res = message ?: return@LaunchedEffect
-        snackbar.showSnackbar(context.getString(res))
+        snackbar.showSnackbar(resources.getString(res))
         vm.message.value = null
     }
 
@@ -116,7 +118,7 @@ fun ConversationScreen(id: Long, segmentId: Long?, onBack: () -> Unit) {
         onCopy = {
             vm.copyTranscript()
             // Desde Android 13 el sistema ya confirma la copia; no duplicar el aviso.
-            if (Build.VERSION.SDK_INT < 33) scope.launch { snackbar.showSnackbar(context.getString(R.string.conv_copied)) }
+            if (Build.VERSION.SDK_INT < 33) scope.launch { snackbar.showSnackbar(resources.getString(R.string.conv_copied)) }
         },
         onReprocess = vm::reprocess,
         onDelete = {

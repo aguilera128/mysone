@@ -78,6 +78,8 @@ class DataManager(private val container: AppContainer) {
         }
         db.conversations().deleteEmpty()
         deleteDigests(since, now)
+        // Las tocadas que siguen vivas se vuelven a resumir sin lo olvidado (las OPEN y las borradas se saltan).
+        touched.forEach { container.ai.onConversationReady(it) }
     }
 
     /** En cascada: segmentos, cola, tareas y facts. También sus ficheros de audio, sus alarmas y el resumen del día. */

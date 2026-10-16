@@ -3,8 +3,11 @@ package dev.javieraguilera.mysone
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import dev.javieraguilera.mysone.ai.ProcessWorker
 import dev.javieraguilera.mysone.tasks.MaintenanceWorker
 import io.sentry.android.core.SentryAndroid
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 class MysoneApp : Application() {
     lateinit var container: AppContainer
@@ -16,6 +19,8 @@ class MysoneApp : Application() {
         container = AppContainer(this)
         createChannels()
         MaintenanceWorker.schedule(this)
+        // Al configurar la IA (o al arrancar ya configurada) se procesa lo que esperaba en READY.
+        container.appScope.launch { container.ai.isConfigured.filter { it }.collect { ProcessWorker.enqueue(this@MysoneApp) } }
     }
 
     /** Solo con DSN en la compilación. Ni PII, ni breadcrumbs, ni adjuntos, ni textos de error: solo tipo y pila. */

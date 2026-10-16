@@ -42,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.capture.ListeningController
+import dev.javieraguilera.mysone.capture.ListeningStatus
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AppSettings
@@ -52,9 +53,11 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class SettingsPrivacyViewModel(private val container: AppContainer) : ViewModel() {
     val settings: StateFlow<AppSettings?> = container.settings.data
@@ -77,6 +80,10 @@ class SettingsPrivacyViewModel(private val container: AppContainer) : ViewModel(
     fun deleteAll() = run(R.string.privacy_delete_done, R.string.privacy_delete_failed) {
         // Con la escucha en marcha, el servicio seguiría escribiendo en una conversación ya borrada.
         ListeningController.stop(container.app)
+        // Off llega cuando lo último que oyó el micro ya está en la cola: así se borra también.
+        withTimeoutOrNull(5_000) {
+            ListeningController.status.first { it !is ListeningStatus.Listening && it !is ListeningStatus.MicBusy && it !is ListeningStatus.Starting && it !is ListeningStatus.Paused }
+        }
         container.data.deleteAll()
     }
 

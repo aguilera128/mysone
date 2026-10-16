@@ -29,6 +29,8 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     private class Piece(val startSample: Long, val endSample: Long, val text: String)
 
+    private var startedAt: Long? = null // de la conversación creada, para decir en qué día ha quedado
+
     override suspend fun doWork(): Result {
         val uri = inputData.getString(KEY_URI)?.toUri() ?: return Result.failure()
         val c = applicationContext.container
@@ -60,14 +62,14 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
         // Los errores esperables salen como éxito con mensaje: un Result.failure haría fallar también
         // las importaciones encoladas detrás (van encadenadas en un único trabajo).
-        return if (error == null) Result.success() else Result.success(workDataOf(KEY_ERROR to applicationContext.getString(error)))
+        return if (error == null) Result.success(workDataOf(KEY_STARTED_AT to startedAt)) else Result.success(workDataOf(KEY_ERROR to applicationContext.getString(error)))
     }
 
     /** Devuelve el id del texto de error, o null si se ha creado la conversación. */
     private suspend fun import(uri: Uri, c: AppContainer): Int? {
         val pieces = ArrayList<Piece>()
         var total = 0L
-        var shown = 0f
+        var shownAt = 0L
         VadSegmenter(applicationContext).use { vad ->
             suspend fun transcribe(chunks: List<SpeechChunk>) {
                 for (chunk in chunks) {
@@ -78,8 +80,10 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             AudioDecoder.decode(applicationContext, uri) { samples, progress ->
                 total += samples.size
                 transcribe(vad.accept(samples))
-                if (progress - shown >= 0.01f) {
-                    shown = progress
+                // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
+                val now = System.currentTimeMillis()
+                if (now - shownAt >= PROGRESS_EVERY_MS) {
+                    shownAt = now
                     setProgress(workDataOf(KEY_PROGRESS to progress))
                     showProgress(progress)
                 }
@@ -106,6 +110,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
             convId
         }
+        this.startedAt = startedAt
         c.ai.onConversationReady(id)
         return null
     }
@@ -139,6 +144,8 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_URI = "uri"
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
+        const val KEY_STARTED_AT = "startedAt"
+        private const val PROGRESS_EVERY_MS = 500L
         private const val TAG = "MysoneAsr"
         private const val CHANNEL = "import"
         private const val NOTIFICATION_ID = 7_301

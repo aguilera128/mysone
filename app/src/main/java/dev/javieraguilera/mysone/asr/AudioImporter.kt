@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.core.content.edit
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
@@ -17,7 +18,11 @@ import kotlinx.coroutines.flow.map
 /** Importar un fichero de audio como conversación (§5.5). Las importaciones van de una en una. */
 object AudioImporter {
     private const val TAG = "import"
-    private const val NAME_TAG = "import-name:" // WorkInfo no expone los datos de entrada: el nombre va en una etiqueta
+
+    // Nombre y hora de cada importación, por id de trabajo. No van en las etiquetas del WorkRequest:
+    // WorkManager las escribe en logcat y el nombre de un fichero puede decir de qué va (§10).
+    private const val PREFS = "imports"
+    private const val STALE_MS = 3_600_000L
 
     /** [uri] de SAF (`OpenDocument` con tipo audio). ImportWorker decodifica, pasa el VAD, transcribe y crea la conversación IMPORT → READY. */
     fun enqueue(context: Context, uri: Uri) {
@@ -30,18 +35,28 @@ object AudioImporter {
         val request = OneTimeWorkRequestBuilder<ImportWorker>()
             .setInputData(workDataOf(ImportWorker.KEY_URI to uri.toString()))
             .addTag(TAG)
-            .addTag(NAME_TAG + name)
             .build()
+        prefs(context).edit { putString(request.id.toString(), "${System.currentTimeMillis()}|$name") }
         WorkManager.getInstance(context).enqueueUniqueWork(TAG, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
+    /** De la más antigua a la más reciente. */
     fun observe(context: Context): Flow<List<ImportProgress>> =
         WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG).map { infos ->
+            val prefs = prefs(context)
+            val saved = prefs.all
+            // WorkManager acaba olvidando los trabajos terminados: sus nombres sobran. Con margen, por si el
+            // nombre se ha guardado y el trabajo aún no está en la lista.
+            val ids = infos.map { it.id.toString() }.toSet()
+            val old = System.currentTimeMillis() - STALE_MS
+            val stale = saved.filter { (k, v) -> k !in ids && ((v as? String)?.substringBefore('|')?.toLongOrNull() ?: 0L) < old }.keys
+            if (stale.isNotEmpty()) prefs.edit { stale.forEach(::remove) }
             infos.map { info ->
-                ImportProgress(
+                val (at, name) = (saved[info.id.toString()] as? String)?.split('|', limit = 2)
+                    ?.let { it[0].toLongOrNull() to it.getOrNull(1) } ?: (null to null)
+                at to ImportProgress(
                     id = info.id,
-                    name = info.tags.firstOrNull { it.startsWith(NAME_TAG) }?.removePrefix(NAME_TAG)
-                        ?: context.getString(R.string.asr_import_default_name),
+                    name = name ?: context.getString(R.string.asr_import_default_name),
                     progress = if (info.state.isFinished) 1f else info.progress.getFloat(ImportWorker.KEY_PROGRESS, 0f),
                     done = info.state.isFinished,
                     error = when (info.state) {
@@ -50,9 +65,18 @@ object AudioImporter {
                         WorkInfo.State.CANCELLED -> context.getString(R.string.asr_import_cancelled)
                         else -> null
                     },
+                    startedAt = info.outputData.getLong(ImportWorker.KEY_STARTED_AT, 0L).takeIf { it > 0 },
                 )
-            }
+            }.sortedBy { it.first ?: 0L }.map { it.second }
         }
+
+    /** "Borrar todo": fuera la lista de importaciones terminadas y sus nombres de fichero. */
+    fun forgetHistory(context: Context) {
+        WorkManager.getInstance(context).pruneWork()
+        prefs(context).edit { clear() }
+    }
+
+    private fun prefs(context: Context) =context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private fun displayName(context: Context, uri: Uri): String? = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -63,4 +87,12 @@ object AudioImporter {
     }
 }
 
-data class ImportProgress(val id: UUID, val name: String, val progress: Float, val done: Boolean, val error: String?)
+/** [startedAt]: inicio de la conversación creada (para decir en qué día ha quedado), si ya ha terminado bien. */
+data class ImportProgress(
+    val id: UUID,
+    val name: String,
+    val progress: Float,
+    val done: Boolean,
+    val error: String?,
+    val startedAt: Long? = null,
+)

@@ -4,11 +4,13 @@ import android.content.Context
 import android.net.Uri
 import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
+import dev.javieraguilera.mysone.asr.AudioImporter
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.data.ChatMessage
+import dev.javieraguilera.mysone.data.ChatRole
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.DailyDigest
@@ -78,6 +80,7 @@ class DataManager(private val container: AppContainer) {
         }
         db.conversations().deleteEmpty()
         deleteDigests(since, now)
+        dropChat(touched)
         // Las tocadas que siguen vivas se vuelven a resumir sin lo olvidado (las OPEN y las borradas se saltan).
         touched.forEach { container.ai.onConversationReady(it) }
     }
@@ -89,6 +92,7 @@ class DataManager(private val container: AppContainer) {
         db.pendingAudio().forConversation(id).forEach { pendingFile(it.path).delete() }
         db.conversations().delete(id)
         deleteDigests(c.startedAt, c.endedAt)
+        dropChat(setOf(id))
     }
 
     /** Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. */
@@ -112,11 +116,12 @@ class DataManager(private val container: AppContainer) {
         }
     }
 
-    /** BD, cola, chat, ajustes de IA y clave; conserva los modelos ASR y el resto de ajustes. */
+    /** BD, cola, chat, importaciones, ajustes de IA y clave; conserva los modelos ASR y el resto de ajustes. */
     suspend fun deleteAll() {
         db.tasks().withReminder().forEach { container.reminders.cancel(it.id) }
         db.clearAllTables()
         withContext(Dispatchers.IO) { pendingDir(container.app).listFiles()?.forEach { it.delete() } }
+        AudioImporter.forgetHistory(container.app)
         container.settings.update { it.copy(ai = AiSettings()) }
         container.secrets.clearApiKey()
     }
@@ -133,6 +138,16 @@ class DataManager(private val container: AppContainer) {
             db.tasks().delete(it.id)
         }
         db.facts().observeForConversation(conversationId).first().forEach { db.facts().delete(it.id) }
+    }
+
+    /**
+     * Las respuestas de Preguntar copian lo que dijeron las conversaciones que citan: con ellas se van la
+     * respuesta y su pregunta. Si no, lo olvidado seguiría en pantalla y volvería al proveedor con el historial (§7.5).
+     */
+    private suspend fun dropChat(conversationIds: Set<Long>) {
+        if (conversationIds.isEmpty()) return
+        val ids = chatToForget(db.chat().all(), conversationIds)
+        if (ids.isNotEmpty()) db.chat().delete(ids)
     }
 
     /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello. */
@@ -152,6 +167,19 @@ class DataManager(private val container: AppContainer) {
     companion object {
         private const val MINUTE_MS = 60_000L
         private const val DAY_MS = 24 * 3_600_000L
+
+        /** Ids de las respuestas que citan alguna de [conversationIds] y de la pregunta que las precede. */
+        internal fun chatToForget(messages: List<ChatMessage>, conversationIds: Set<Long>): List<Long> {
+            val out = ArrayList<Long>()
+            messages.forEachIndexed { i, m ->
+                if (m.role != ChatRole.ASSISTANT || m.citations == null) return@forEachIndexed
+                val cited = runCatching { AppJson.decodeFromString<List<Long>>(m.citations) }.getOrDefault(emptyList())
+                if (cited.none { it in conversationIds }) return@forEachIndexed
+                out += m.id
+                messages.getOrNull(i - 1)?.takeIf { it.role == ChatRole.USER }?.let { out += it.id }
+            }
+            return out
+        }
 
         /** Instante antes del cual se borra la transcripción; null = no borrar (0 días). */
         fun retentionCutoff(now: Long, days: Int): Long? = if (days <= 0) null else now - days * DAY_MS

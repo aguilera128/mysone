@@ -29,6 +29,19 @@ class DataManagerTest {
     private val now = 1_760_000_000_000L
     private val day = 86_400_000L
 
+    @Test fun `al borrar una conversación se van las respuestas que la citan y su pregunta`() {
+        val chat = listOf(
+            ChatMessage(1, "user", "¿Dónde me alojo en Granada?", createdAt = now),
+            ChatMessage(2, "assistant", "En el Alhambra Palace [c:4]", citations = "[4,7]", createdAt = now),
+            ChatMessage(3, "user", "¿Y qué tengo pendiente?", createdAt = now),
+            ChatMessage(4, "assistant", "Comprar pan [c:5]", citations = "[5]", createdAt = now),
+            ChatMessage(5, "assistant", "Sin citas", createdAt = now),
+        )
+        assertEquals(listOf(2L, 1L), DataManager.chatToForget(chat, setOf(4L)))
+        assertEquals(listOf(2L, 1L, 4L, 3L), DataManager.chatToForget(chat, setOf(7L, 5L)))
+        assertEquals(emptyList<Long>(), DataManager.chatToForget(chat, setOf(9L)))
+    }
+
     @Test fun `corte de retención`() {
         assertNull(DataManager.retentionCutoff(now, 0))
         assertEquals(now - 90 * day, DataManager.retentionCutoff(now, 90))

@@ -292,6 +292,9 @@ interface ChatDao {
     @Query("DELETE FROM chat_message")
     suspend fun clear()
 
+    @Query("DELETE FROM chat_message WHERE id IN (:ids)")
+    suspend fun delete(ids: List<Long>)
+
     @Query("SELECT * FROM chat_message ORDER BY createdAt, id")
     suspend fun all(): List<ChatMessage>
 }

@@ -30,4 +30,5 @@ adb push mic.pcm /data/local/tmp/mic.pcm
 adb shell "run-as dev.javieraguilera.mysone sh -c 'mkdir -p files/debug && cp /data/local/tmp/mic.pcm files/debug/'"
 ```
 
-Después, empezar (o reanudar) la escucha en la app. Para repetir, volver a copiar `mic.pcm`.
+Después, empezar (o reanudar) la escucha en la app. Para repetir, volver a copiar `mic.pcm` y pausar y
+reanudar la escucha (o detenerla y empezar): el fichero se lee al abrir el micro, no mientras se captura.

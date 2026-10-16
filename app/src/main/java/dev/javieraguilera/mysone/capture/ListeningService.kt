@@ -5,6 +5,7 @@ import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -15,6 +16,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.edit
+import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.TranscriberState
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_PAUSE
@@ -32,6 +34,7 @@ import dev.javieraguilera.mysone.capture.ListeningStatus.Paused
 import dev.javieraguilera.mysone.capture.ListeningStatus.Starting
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
+import dev.javieraguilera.mysone.data.AppDatabase
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.GapReason
 import dev.javieraguilera.mysone.data.ListeningGap
@@ -208,15 +211,7 @@ class ListeningService : Service() {
     }
 
     /** Primera orden de esta instancia: deja en orden lo que dejó a medias un proceso anterior. */
-    private suspend fun recover() = book.withLock {
-        // Hay latido sin "detener" ni pausa: el servicio murió escuchando.
-        val alive = prefs.getLong(KEY_ALIVE, 0)
-        if (alive > 0) {
-            openGapLocked(GapReason.KILLED, alive)
-            prefs.edit { remove(KEY_ALIVE) }
-        }
-        tracker.recoverOrphans()
-    }
+    private suspend fun recover() = book.withLock { recoverDeadSession(this) }
 
     private suspend fun restart() {
         if (!c.settings.current().listeningEnabled) return
@@ -307,11 +302,16 @@ class ListeningService : Service() {
         ResumeNotifier.cancel(this)
         clearPause()
         stopCapture()
-        // Off cuando lo último que oyó la VAD ya está en la cola: "Borrar todo" espera a este estado.
+        // Off cuando ya está en la BD todo lo que deja la escucha (lo último que oyó la VAD, la conversación
+        // cerrada y el hueco): "Borrar todo" espera a este estado y después no se escribe nada más que él no vea.
         chunks?.close()
         queueJob?.join()
+        book.withLock {
+            tracker.close()
+            openGapLocked(GapReason.STOPPED)
+        }
         ListeningController.publish(Off) // para la UI ya está detenida; la notificación dice "terminando"
-        endSession(GapReason.STOPPED, drain = true)
+        endSession(gap = null, drain = true)
     }
 
     /**
@@ -475,21 +475,11 @@ class ListeningService : Service() {
     }
 
     /** Conversación READY sin audio pendiente: a la IA, o fuera si no quedó ningún segmento. Con [book]. */
-    private suspend fun finishLocked(id: Long) {
-        val conv = db.conversations().get(id) ?: return
-        if (conv.state != ConvState.READY || db.pendingAudio().countForConversation(id) > 0) return
-        if (db.segments().countForConversation(id) == 0) db.conversations().delete(id) else c.ai.onConversationReady(id)
-    }
+    private suspend fun finishLocked(id: Long) = finishConversation(c, id)
 
     // ---- Huecos (con [book]). Como mucho uno abierto: abrir otro cierra el anterior. ----
 
-    private suspend fun openGapLocked(reason: String, at: Long = now()) {
-        val open = db.gaps().findOpen()
-        if (open?.reason == reason) return
-        // El latido puede ser anterior al inicio del hueco abierto (KILLED justo tras un MIC_BUSY).
-        if (open != null) db.gaps().setEnded(open.id, maxOf(at, open.startedAt))
-        db.gaps().insert(ListeningGap(startedAt = at, reason = reason))
-    }
+    private suspend fun openGapLocked(reason: String, at: Long = now()) = openGap(db, reason, at)
 
     /** Sin [reason] cierra el que haya; con él, solo si es de ese motivo. */
     private suspend fun closeGapLocked(reason: String? = null) {
@@ -553,19 +543,54 @@ class ListeningService : Service() {
 
     private fun now() = System.currentTimeMillis()
 
-    private companion object {
-        const val TAG = "ListeningService"
-        const val PREFS = "capture"
-        const val KEY_ALIVE = "lastAliveAt"
-        const val KEY_PAUSED_UNTIL = "pausedUntil"
-        const val RC_RESUME_ALARM = 20
-        const val NOTIFY_EVERY_MS = 10_000L
-        const val TIMER_MS = 15_000L
-        const val HOLD_POLL_MS = 60_000L
-        const val RETRY_MS = 5_000L
-        const val DRAIN_MS = 30_000L
-        const val MAX_ATTEMPTS = 3
-        const val MAX_QUEUE_MS = 4 * 3_600_000L
-        const val LOW_BATTERY = 20
+    companion object {
+        private const val TAG = "ListeningService"
+        private const val PREFS = "capture"
+        private const val KEY_ALIVE = "lastAliveAt"
+        private const val KEY_PAUSED_UNTIL = "pausedUntil"
+        private const val RC_RESUME_ALARM = 20
+        private const val NOTIFY_EVERY_MS = 10_000L
+        private const val TIMER_MS = 15_000L
+        private const val HOLD_POLL_MS = 60_000L
+        private const val RETRY_MS = 5_000L
+        private const val DRAIN_MS = 30_000L
+        private const val MAX_ATTEMPTS = 3
+        private const val MAX_QUEUE_MS = 4 * 3_600_000L
+        private const val LOW_BATTERY = 20
+        private val recovery = Mutex()
+
+        /**
+         * Lo que dejó a medias un proceso que murió escuchando (§5.1, §5.3): hueco KILLED desde el último latido y
+         * conversaciones OPEN del micro → READY, que así se procesan. La llaman la primera orden de cada servicio
+         * y, sin servicio, el arranque del móvil y la actualización de la app: si no, esperaría a que se reanude.
+         */
+        internal suspend fun recoverDeadSession(context: Context) = recovery.withLock {
+            val c = context.applicationContext.container
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            // Hay latido sin "detener" ni pausa: el servicio murió escuchando.
+            val alive = prefs.getLong(KEY_ALIVE, 0)
+            if (alive > 0) {
+                openGap(c.db, GapReason.KILLED, alive)
+                prefs.edit { remove(KEY_ALIVE) }
+            }
+            ConversationTracker(c.db.conversations(), { 0L }) { finishConversation(c, it) }.recoverOrphans()
+        }
     }
+}
+
+/** Conversación READY sin audio pendiente: a la IA, o fuera si no quedó ningún segmento. */
+private suspend fun finishConversation(c: AppContainer, id: Long) {
+    val db = c.db
+    val conv = db.conversations().get(id) ?: return
+    if (conv.state != ConvState.READY || db.pendingAudio().countForConversation(id) > 0) return
+    if (db.segments().countForConversation(id) == 0) db.conversations().delete(id) else c.ai.onConversationReady(id)
+}
+
+/** Como mucho un hueco abierto: abrir otro cierra el anterior. */
+private suspend fun openGap(db: AppDatabase, reason: String, at: Long) {
+    val open = db.gaps().findOpen()
+    if (open?.reason == reason) return
+    // El latido puede ser anterior al inicio del hueco abierto (KILLED justo tras un MIC_BUSY).
+    if (open != null) db.gaps().setEnded(open.id, maxOf(at, open.startedAt))
+    db.gaps().insert(ListeningGap(startedAt = at, reason = reason))
 }

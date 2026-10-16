@@ -78,11 +78,12 @@ class SettingsPrivacyViewModel(private val container: AppContainer) : ViewModel(
     fun export(uri: Uri) = run(R.string.privacy_export_done, R.string.privacy_export_failed) { container.data.exportJson(uri) }
 
     fun deleteAll() = run(R.string.privacy_delete_done, R.string.privacy_delete_failed) {
-        // Con la escucha en marcha, el servicio seguiría escribiendo en una conversación ya borrada.
-        ListeningController.stop(container.app)
-        // Off llega cuando lo último que oyó el micro ya está en la cola: así se borra también.
-        withTimeoutOrNull(5_000) {
-            ListeningController.status.first { it !is ListeningStatus.Listening && it !is ListeningStatus.MicBusy && it !is ListeningStatus.Starting && it !is ListeningStatus.Paused }
+        // Con la escucha en marcha, el servicio seguiría escribiendo en una conversación ya borrada. Si ya está
+        // parada no se le manda nada: "detener" otra vez abriría un hueco nuevo justo después de borrar.
+        if (ListeningController.status.value.isActive()) {
+            ListeningController.stop(container.app)
+            // Off llega cuando lo que deja la escucha (cola, conversación y hueco) ya está en la BD: así se borra también.
+            withTimeoutOrNull(5_000) { ListeningController.status.first { !it.isActive() } }
         }
         container.data.deleteAll()
     }
@@ -100,6 +101,9 @@ class SettingsPrivacyViewModel(private val container: AppContainer) : ViewModel(
         }
     }
 }
+
+private fun ListeningStatus.isActive() =
+    this is ListeningStatus.Listening || this is ListeningStatus.MicBusy || this is ListeningStatus.Starting || this is ListeningStatus.Paused
 
 /** Días de retención de la transcripción literal; 0 = no borrar. */
 private val RETENTION_OPTIONS = listOf(7, 30, 90, 180, 365, 0)

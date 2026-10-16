@@ -219,12 +219,17 @@ private class FakeMic(private val file: File) {
     private val pcm = ByteBuffer.wrap(file.readBytes()).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
     private val t0 = SystemClock.elapsedRealtime()
     private var fed = 0L
+    private var finished = false
 
     fun fill(buf: ShortArray, n: Int) {
         val k = minOf(n, pcm.remaining())
         pcm.get(buf, 0, k)
         buf.fill(0, k, n)
-        if (k < n && file.exists()) file.renameTo(File(file.path + ".done"))
+        // Una sola vez: un mic.pcm nuevo copiado con la captura en marcha es para la próxima (al reanudar).
+        if (k < n && !finished) {
+            finished = true
+            file.renameTo(File(file.path + ".done"))
+        }
         fed += n
         // Por si el read() del emulador no bloquea: nunca más deprisa que el tiempo real.
         val ahead = fed * 1000 / AudioCapture.SR - (SystemClock.elapsedRealtime() - t0)

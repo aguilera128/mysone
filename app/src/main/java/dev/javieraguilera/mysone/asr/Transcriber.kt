@@ -169,10 +169,51 @@ internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: I
 private val WHITESPACE = Regex("\\s+")
 private val LETTER_OR_DIGIT = Regex("[\\p{L}\\p{N}]")
 
-/** Espacios normalizados. Sin letras ni cifras (".", "¿?" sobre ruido) cuenta como nada dicho. */
+/** Espacios normalizados y «ñ» recuperadas. Sin letras ni cifras (".", "¿?" sobre ruido) cuenta como nada dicho. */
 internal fun cleanText(raw: String): String {
-    val text = raw.trim().replace(WHITESPACE, " ")
+    val text = restoreEnye(raw.trim().replace(WHITESPACE, " "))
     return if (LETTER_OR_DIGIT.containsMatchIn(text)) text else ""
+}
+
+// Canary 180M int8 a veces cambia la «ñ» por un principio de palabra: emite «▁es|pa|▁o|l» en vez de
+// «▁es|pa|ñ|ol» (tokens comprobados en el emulador con la autoprueba), y sale «espa ol», «ma ana».
+// ponytail: lista cerrada de palabras frecuentes (y apellidos); una que falte se queda partida. Si se ve
+// alguna más en las pruebas, añadirla aquí. Faltan adrede «niña», «seña» y «leña»: «ni a», «se a» y «le a»
+// también son dos palabras de verdad.
+private val ENYE_WORDS: Set<String> = """
+    año años mañana mañanas niño niños niñas señor señores señora señoras señorita señoritas
+    españa español española españoles españolas pequeño pequeña pequeños pequeñas cumpleaños
+    compañero compañera compañeros compañeras compañía compañías acompañar acompaño acompaña acompañas
+    baño baños bañera sueño sueños soñar soñé sueña dueño dueña dueños dueñas diseño diseños diseñar
+    diseñador diseñadora otoño montaña montañas enseñar enseño enseña enseñanza cariño daño daños
+    extraño extraña extraños extrañas extrañar tamaño tamaños campaña campañas señal señales
+    añadir añade añadido añadida muñeca muñeco pañuelo pañal pañales puño desempeño empeño albañil
+    albañiles riñón riñones cuñado cuñada cuñados
+    muñoz núñez ibáñez peña ordóñez yáñez logroño coruña cataluña begoña iñaki íñigo
+""".trim().split(Regex("\\s+")).toSet()
+
+private val WORD_OR_GAP = Regex("\\p{L}+|[^\\p{L}]+")
+
+/** Une «ma ana» → «mañana» solo si el resultado es una palabra de [ENYE_WORDS]: así no pega dos palabras reales. */
+internal fun restoreEnye(text: String): String {
+    if (' ' !in text) return text
+    val parts = WORD_OR_GAP.findAll(text).map { it.value }.toList()
+    val out = StringBuilder(text.length + 4)
+    var i = 0
+    while (i < parts.size) {
+        val left = parts[i]
+        val right = parts.getOrNull(i + 2)
+        if (right != null && parts[i + 1] == " " && left[0].isLetter() && right[0].isLetter() &&
+            (left + "ñ" + right).lowercase() in ENYE_WORDS
+        ) {
+            out.append(left).append(if (left.length > 1 && left.all(Char::isUpperCase)) 'Ñ' else 'ñ').append(right)
+            i += 3
+        } else {
+            out.append(left)
+            i++
+        }
+    }
+    return out.toString()
 }
 
 /** assets/selftest_es.wav: frase TTS en español, PCM16 mono 16 kHz. */

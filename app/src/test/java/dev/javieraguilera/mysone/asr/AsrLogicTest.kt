@@ -85,6 +85,27 @@ class AsrLogicTest {
 
     // --- PCM ---
 
+    // --- Margen antes de cada trozo ---
+
+    @Test fun `el margen añade lo anterior al trozo y retrasa su inicio`() {
+        val history = AudioHistory(10)
+        history.add(FloatArray(25) { it.toFloat() }) // guarda 15..24
+        val chunk = withPreRoll(22, floatArrayOf(22f, 23f), history.snapshot(), notBefore = 0, preRoll = 4)
+        assertEquals(18L, chunk.startSample)
+        assertArrayEquals(floatArrayOf(18f, 19f, 20f, 21f, 22f, 23f), chunk.samples, 0f)
+    }
+
+    @Test fun `el margen no repite el trozo anterior ni se inventa lo que ya no está`() {
+        val history = AudioHistory(10)
+        history.add(FloatArray(25) { it.toFloat() })
+        val snap = history.snapshot()
+        assertEquals(20L, withPreRoll(22, floatArrayOf(22f), snap, notBefore = 20, preRoll = 4).startSample)
+        assertEquals(15L, withPreRoll(17, floatArrayOf(17f), snap, notBefore = 0, preRoll = 4).startSample) // solo quedan 15 y 16
+        val alone = withPreRoll(22, floatArrayOf(22f), null, notBefore = 0, preRoll = 4)
+        assertEquals(22L, alone.startSample)
+        assertEquals(1, alone.samples.size)
+    }
+
     @Test fun `PCM16 ida y vuelta es exacto para muestras de AudioRecord`() {
         val shorts = shortArrayOf(0, 1, -1, 12_345, -12_345, Short.MAX_VALUE, Short.MIN_VALUE)
         val floats = FloatArray(shorts.size) { shorts[it] / 32768f } // como convierte la captura
@@ -171,6 +192,19 @@ class AsrLogicTest {
         assertEquals("", cleanText(" . "))
         assertEquals("", cleanText("¿?"))
         assertEquals("", cleanText(""))
+    }
+
+    @Test fun `recupera la ñ que Canary cambia por un corte de palabra`() {
+        assertEquals("Hola, esto es una prueba de transcripción en español.", cleanText("Hola, esto es una prueba de transcripción en espa ol."))
+        assertEquals("El niño de España tiene cinco años.", cleanText("El ni o de Espa a tiene cinco a os."))
+        assertEquals("Recuérdame mañana a las diez de la mañana", cleanText("Recuérdame ma ana a las diez de la ma ana"))
+        assertEquals("El señor Muñoz, cumpleaños. ESPAÑA", cleanText("El se or Mu oz, cumplea os. ESPA A"))
+        assertEquals("Mañana llamo.", cleanText("Ma ana llamo."))
+    }
+
+    @Test fun `no pega dos palabras que existen por separado`() {
+        assertEquals("ni a mí me gusta, se a ido y le a dado", cleanText("ni a mí me gusta, se a ido y le a dado"))
+        assertEquals("la casa es grande", cleanText("la casa es grande"))
     }
 
     private fun sha256(data: ByteArray) =

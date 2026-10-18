@@ -25,6 +25,8 @@ class AskTextTest {
         assertEquals(AiError.AUTH, classifyAiError(llm(LlmErrorKind.AUTH)))
         assertEquals(AiError.RATE, classifyAiError(RuntimeException(llm(LlmErrorKind.RATE))))
         assertEquals(AiError.BAD_OUTPUT, classifyAiError(llm(LlmErrorKind.BAD_OUTPUT)))
+        // Cada LlmErrorKind tiene su AiError (valueOf por nombre).
+        LlmErrorKind.entries.forEach { assertEquals(it.name, classifyAiError(llm(it)).name) }
         assertEquals(AiError.NETWORK, classifyAiError(IOException("timeout")))
         assertEquals(AiError.OTHER, classifyAiError(IllegalStateException()))
     }

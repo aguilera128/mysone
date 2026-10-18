@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.ChatRole
+import dev.javieraguilera.mysone.ui.settings.isValidBaseUrl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,6 +42,13 @@ class AskViewModel(private val container: AppContainer) : ViewModel() {
     /** null mientras carga. */
     val configured: StateFlow<Boolean?> = container.ai.isConfigured
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Solo está apagada: proveedor, clave y aviso ya están, basta con volver a activarla. */
+    val canEnable: StateFlow<Boolean> = combine(container.settings.data, container.secrets.hasApiKey) { s, hasKey ->
+        val ai = s.ai
+        !ai.enabled && ai.consentAt != null && hasKey && isValidBaseUrl(ai.baseUrl) &&
+            ai.modelBackground.isNotBlank() && ai.modelAnswer.isNotBlank()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val ai: StateFlow<AiSettings?> = container.settings.data.map { it.ai }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -77,6 +86,10 @@ class AskViewModel(private val container: AppContainer) : ViewModel() {
 
     fun dismissError() {
         _error.value = null
+    }
+
+    fun enableAi() {
+        viewModelScope.launch { container.settings.update { it.copy(ai = it.ai.copy(enabled = true)) } }
     }
 
     fun clearChat() {

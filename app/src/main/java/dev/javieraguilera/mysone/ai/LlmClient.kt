@@ -48,6 +48,8 @@ enum class LlmErrorKind(@StringRes val messageRes: Int) {
     SERVER(R.string.ai_error_server),
     BAD_OUTPUT(R.string.ai_error_bad_output),
     REFUSAL(R.string.ai_error_refusal),
+    /** http:// que el networkSecurityConfig no deja (release): hay que cambiar la URL a https://. */
+    INSECURE_URL(R.string.ai_error_insecure_url),
 }
 
 private val RETRYABLE = setOf(LlmErrorKind.RATE, LlmErrorKind.NETWORK, LlmErrorKind.SERVER)
@@ -94,7 +96,7 @@ internal suspend fun OkHttpClient.postJson(url: String, headers: Map<String, Str
             newCall(request).execute().use { HttpReply(it.code, it.body.string(), it.header("retry-after")) }
         } catch (_: UnknownServiceException) {
             // http:// que el networkSecurityConfig no deja (release): reintentar no lo arregla, hay que cambiar la URL.
-            throw LlmException(LlmErrorKind.SERVER, "Texto plano no permitido", retryable = false)
+            throw LlmException(LlmErrorKind.INSECURE_URL, "Texto plano no permitido", retryable = false)
         } catch (e: IOException) {
             throw LlmException(LlmErrorKind.NETWORK, e.javaClass.simpleName)
         }

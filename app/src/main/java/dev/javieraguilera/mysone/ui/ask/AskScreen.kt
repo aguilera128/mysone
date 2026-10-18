@@ -81,6 +81,7 @@ fun AskScreen(onOpenConversation: (Long, Long?) -> Unit, onOpenAiSettings: () ->
     val vm = viewModel { AskViewModel(container) }
     val messages by vm.messages.collectAsStateWithLifecycle()
     val configured by vm.configured.collectAsStateWithLifecycle()
+    val canEnable by vm.canEnable.collectAsStateWithLifecycle()
     val ai by vm.ai.collectAsStateWithLifecycle()
     val pending by vm.pending.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
@@ -98,6 +99,8 @@ fun AskScreen(onOpenConversation: (Long, Long?) -> Unit, onOpenAiSettings: () ->
         onOpenConversation = { onOpenConversation(it, null) },
         onOpenAiSettings = onOpenAiSettings,
         onOpenSearch = onOpenSearch,
+        canEnable = canEnable,
+        onEnableAi = vm::enableAi,
     )
 }
 
@@ -115,6 +118,8 @@ private fun AskContent(
     onOpenConversation: (Long) -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenSearch: () -> Unit,
+    canEnable: Boolean = false,
+    onEnableAi: () -> Unit = {},
 ) {
     var confirmClear by rememberSaveable { mutableStateOf(false) }
     Scaffold(
@@ -135,12 +140,16 @@ private fun AskContent(
             when (configured) {
                 null -> Unit
                 false -> EmptyState(
-                    title = stringResource(R.string.ask_off_title),
-                    message = stringResource(R.string.ask_off_message),
+                    title = stringResource(if (canEnable) R.string.ask_disabled_title else R.string.ask_off_title),
+                    message = if (canEnable) stringResource(R.string.ask_disabled_message, provider) else stringResource(R.string.ask_off_message),
                     icon = Icons.Outlined.AutoAwesome,
                     action = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Button(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_off_action)) }
+                            if (canEnable) {
+                                Button(onClick = onEnableAi) { Text(stringResource(R.string.ask_disabled_action)) }
+                            } else {
+                                Button(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_off_action)) }
+                            }
                             TextButton(onClick = onOpenSearch) { Text(stringResource(R.string.ask_off_search)) }
                         }
                     },
@@ -303,6 +312,8 @@ private fun ErrorBar(error: AiError, onRetry: () -> Unit, onDismiss: () -> Unit,
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
                 if (error == AiError.AUTH) {
                     TextButton(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_open_ai_settings)) }
+                } else if (error == AiError.INSECURE_URL) {
+                    TextButton(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_open_ai_url)) }
                 } else if (error != AiError.REFUSAL) {
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
                 }

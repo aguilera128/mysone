@@ -22,7 +22,7 @@ fun parseCitations(raw: String): CitedText {
 }
 
 /** Tipos de fallo de la IA que la UI explica de forma distinta (los de LlmErrorKind de B3). */
-enum class AiError { NETWORK, AUTH, RATE, SERVER, BAD_OUTPUT, REFUSAL, OTHER }
+enum class AiError { NETWORK, AUTH, RATE, SERVER, BAD_OUTPUT, REFUSAL, INSECURE_URL, OTHER }
 
 fun classifyAiError(e: Throwable): AiError {
     val chain = generateSequence(e) { it.cause }
@@ -42,5 +42,6 @@ fun AiError.messageRes(): Int = when (this) {
     AiError.SERVER -> R.string.ask_error_server
     AiError.BAD_OUTPUT -> R.string.ask_error_bad_output
     AiError.REFUSAL -> R.string.ask_error_refusal
+    AiError.INSECURE_URL -> R.string.ask_error_insecure_url
     AiError.OTHER -> R.string.ask_error_other
 }

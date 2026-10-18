@@ -8,6 +8,7 @@
     <string name="ai_error_server">El proveedor de IA ha devuelto un error. Revisa la dirección y los modelos en Ajustes o prueba más tarde.</string>
     <string name="ai_error_bad_output">La IA ha devuelto una respuesta que no se entiende. Prueba otra vez.</string>
     <string name="ai_error_refusal">La IA no ha querido responder a esto.</string>
+    <string name="ai_error_insecure_url">La URL de la IA empieza por http:// y Mysone solo se conecta por https://. Cámbiala en Ajustes › Inteligencia artificial.</string>
 
     <!-- Probar conexión (AiProcessing.testConnection) -->
     <string name="ai_test_ok">Conexión correcta</string>

@@ -9,6 +9,9 @@
     <string name="ask_off_title">Preguntar necesita la IA</string>
     <string name="ask_off_message">Para responder, Mysone envía a un proveedor de IA un extracto de tus transcripciones. Está desactivada hasta que elijas proveedor, pongas tu clave y aceptes el aviso. Mientras, puedes buscar en lo escuchado: funciona sin conexión.</string>
     <string name="ask_off_action">Configurar la IA</string>
+    <string name="ask_disabled_title">La IA está desactivada</string>
+    <string name="ask_disabled_message">Ya tienes proveedor (%1$s), clave y aviso aceptado: actívala para preguntar. Mientras, puedes buscar en lo escuchado: funciona sin conexión.</string>
+    <string name="ask_disabled_action">Activar la IA</string>
     <string name="ask_off_search">Buscar en lo escuchado</string>
     <string name="ask_intro_title">¿Qué quieres recordar?</string>
     <string name="ask_intro_message">Pregunta en lenguaje natural por lo que has hablado. Cada respuesta enlaza con las conversaciones de las que sale.</string>
@@ -25,12 +28,14 @@
     <!-- Chip de cita de otro día: día, hora y título -->
     <string name="ask_citation_day">%1$s, %2$s · %3$s</string>
     <string name="ask_open_ai_settings">Revisar la clave</string>
+    <string name="ask_open_ai_url">Cambiar la URL</string>
     <string name="ask_error_network">No hay conexión con el proveedor de IA. Comprueba tu red e inténtalo de nuevo.</string>
     <string name="ask_error_auth">Falta la clave de la IA o el proveedor la rechaza. Revísala en Ajustes.</string>
     <string name="ask_error_rate">Has llegado al límite de uso o de cuota del proveedor. Espera un poco o revisa tu saldo.</string>
     <string name="ask_error_server">El proveedor de IA está fallando ahora mismo. Inténtalo dentro de un rato.</string>
     <string name="ask_error_bad_output">La respuesta del proveedor ha llegado incompleta. Vuelve a intentarlo.</string>
     <string name="ask_error_refusal">El modelo se ha negado a responder esta pregunta.</string>
+    <string name="ask_error_insecure_url">La URL de la IA empieza por http:// y Mysone solo se conecta por https://. Cámbiala en Ajustes › Inteligencia artificial.</string>
     <string name="ask_error_other">No se ha podido responder. Inténtalo de nuevo.</string>
 
     <!-- Tareas -->

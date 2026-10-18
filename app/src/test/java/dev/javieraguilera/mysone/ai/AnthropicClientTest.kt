@@ -7,7 +7,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.ConnectionSpec
 import okhttp3.Headers
+import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -131,6 +133,13 @@ class AnthropicClientTest {
         repeat(3) { server.enqueue(MockResponse(529, Headers.headersOf(), "{}")) }
         assertKind(LlmErrorKind.SERVER) { client().complete(req) }
         assertEquals(4, server.requestCount)
+    }
+
+    @Test fun `http sin texto plano permitido es INSECURE_URL y no se reintenta`() = runTest {
+        // Como en release (networkSecurityConfig sin cleartext): OkHttp lanza UnknownServiceException sin conectar.
+        val tlsOnly = OkHttpClient.Builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).build()
+        assertKind(LlmErrorKind.INSECURE_URL) { AnthropicClient(server.url("/").toString(), "sk-test", tlsOnly).complete(req) }
+        assertEquals(0, server.requestCount)
     }
 
     @Test fun `parseAnthropic sin bloque de texto es BAD_OUTPUT`() {

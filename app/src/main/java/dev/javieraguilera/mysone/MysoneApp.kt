@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.os.StrictMode
 import dev.javieraguilera.mysone.ai.ProcessWorker
 import dev.javieraguilera.mysone.tasks.MaintenanceWorker
 import io.sentry.android.core.SentryAndroid
@@ -15,6 +16,12 @@ class MysoneApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Solo en debug: avisa en logcat (con la pila de quien lo abrió) de cada Closeable o cursor sin cerrar.
+        if (BuildConfig.DEBUG) {
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder().detectLeakedClosableObjects().detectLeakedSqlLiteObjects().penaltyLog().build(),
+            )
+        }
         initSentry()
         container = AppContainer(this)
         createChannels()

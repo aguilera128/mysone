@@ -82,7 +82,7 @@ class ModelManager(private val context: Context) {
             id = "parakeet-v3",
             name = R.string.model_parakeet_name,
             description = R.string.model_parakeet_desc,
-            minRamGb = 8,
+            minRamGb = PARAKEET_MIN_RAM_GB,
             repo = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
             commit = "2bda32ec70b097a55adaa07d9a7173915b43cc78",
             files = listOf(
@@ -183,7 +183,7 @@ class ModelManager(private val context: Context) {
         val text = try {
             val rec = createRecognizer(model, modelDir(id))
             try {
-                rec.transcribeText(selfTestSamples(context), SAMPLE_RATE)
+                rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id)
             } finally {
                 rec.release()
             }
@@ -314,6 +314,15 @@ class ModelManager(private val context: Context) {
         const val TMP_DIR = "models-tmp"
     }
 }
+
+/**
+ * Desde esta RAM se recomienda Parakeet, el más preciso (docs/investigacion/08): pica en ~1,1 GB y el
+ * Memory Limiter de Android 17 deja 2 GiB a un servicio en primer plano en un móvil de 6 GB (1 GiB con 4 GB).
+ */
+internal const val PARAKEET_MIN_RAM_GB = 6
+
+/** Modelo que se propone para [ramGb] (0 = no se sabe): Parakeet si hay RAM de sobra; si no, Canary, el ligero. */
+internal fun recommendedModelId(ramGb: Int): String = if (ramGb >= PARAKEET_MIN_RAM_GB) "parakeet-v3" else "canary-180m-es"
 
 internal enum class Net { NONE, METERED, UNMETERED }
 

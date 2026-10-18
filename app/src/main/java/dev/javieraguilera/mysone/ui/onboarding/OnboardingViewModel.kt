@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.javieraguilera.mysone.AppContainer
+import dev.javieraguilera.mysone.asr.ModelInstall
+import dev.javieraguilera.mysone.asr.recommendedModelId
 import dev.javieraguilera.mysone.data.AppSettings
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +34,8 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
 
     val models = container.models
     val ramGb: Int = models.deviceRamGb()
-    var selectedModelId by mutableStateOf(AppSettings().asrModelId)
+    val recommendedModelId = recommendedModelId(ramGb)
+    var selectedModelId by mutableStateOf(recommendedModelId)
         private set
     var wifiOnly by mutableStateOf(AppSettings().downloadWifiOnly)
         private set
@@ -41,7 +44,9 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             val s = container.settings.current()
             legalChecked = s.legalAcceptedAt != null
-            selectedModelId = s.asrModelId
+            // Si el guardado ni está ni se está bajando, se propone (y guarda) el recomendado para esta RAM.
+            if ((models.installs.value[s.asrModelId] ?: ModelInstall.NotInstalled) == ModelInstall.NotInstalled) selectModel(recommendedModelId)
+            else selectedModelId = s.asrModelId
             wifiOnly = s.downloadWifiOnly
         }
     }
@@ -71,7 +76,11 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
         container.appScope.launch { container.settings.update { it.copy(downloadWifiOnly = on) } }
     }
 
-    fun download() = models.download(selectedModelId, allowMetered = !wifiOnly)
+    /** Guarda también el modelo: la escucha carga el de settings.asrModelId, no el que se haya descargado. */
+    fun download() {
+        selectModel(selectedModelId)
+        models.download(selectedModelId, allowMetered = !wifiOnly)
+    }
 
     fun cancelDownload() = models.cancel(selectedModelId)
 }

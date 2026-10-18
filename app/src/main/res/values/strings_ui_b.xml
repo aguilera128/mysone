@@ -170,6 +170,7 @@
     <string name="models_wifi_only_desc">Los modelos ocupan cientos de MB.</string>
     <string name="models_section_catalog">Modelos</string>
     <string name="models_meta">%1$s · %2$s</string>
+    <string name="models_recommended">Recomendado para tu móvil</string>
     <string name="models_low_ram">Se recomienda con %1$d GB de RAM o más: en tu móvil puede ir lento o cerrarse.</string>
     <string name="models_selected_missing">Elegido, pero falta descargarlo.</string>
     <string name="models_download">Descargar (%1$s)</string>

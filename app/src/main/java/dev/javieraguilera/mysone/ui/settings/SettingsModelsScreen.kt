@@ -59,6 +59,7 @@ import dev.javieraguilera.mysone.asr.AudioImporter
 import dev.javieraguilera.mysone.asr.DownloadWait
 import dev.javieraguilera.mysone.asr.ImportProgress
 import dev.javieraguilera.mysone.asr.ModelInstall
+import dev.javieraguilera.mysone.asr.recommendedModelId
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AppSettings
@@ -89,6 +90,7 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     val catalog = models.catalog
     val installs = models.installs
     val ramGb = models.deviceRamGb()
+    val recommendedId = recommendedModelId(ramGb)
 
     val selectedId: StateFlow<String?> = container.settings.data.map { it.asrModelId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -158,6 +160,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         selectedId = selectedId,
         wifiOnly = wifiOnly,
         ramGb = vm.ramGb,
+        recommendedId = vm.recommendedId,
         tests = tests,
         imports = imports,
         onBack = onBack,
@@ -180,6 +183,7 @@ private fun SettingsModelsContent(
     selectedId: String?,
     wifiOnly: Boolean,
     ramGb: Int,
+    recommendedId: String,
     tests: Map<String, SelfTest>,
     imports: List<ImportProgress>,
     onBack: () -> Unit,
@@ -205,11 +209,13 @@ private fun SettingsModelsContent(
             SectionHeader(stringResource(R.string.models_section_catalog))
             Column(Modifier.selectableGroup()) {
                 catalog.forEach { m ->
+                    val lowRam = ramGb in 1 until m.recommendedMinRamGb
                     ModelRow(
                         model = m,
                         install = installs[m.id] ?: ModelInstall.NotInstalled,
                         selected = m.id == selectedId,
-                        lowRam = ramGb in 1 until m.recommendedMinRamGb,
+                        recommended = m.id == recommendedId && !lowRam,
+                        lowRam = lowRam,
                         test = tests[m.id],
                         onDownload = { actions.download(m.id, wifiOnly) },
                         onDelete = { toDelete = m.id },
@@ -257,6 +263,7 @@ private fun ModelRow(
     model: AsrModel,
     install: ModelInstall,
     selected: Boolean,
+    recommended: Boolean,
     lowRam: Boolean,
     test: SelfTest?,
     onDownload: () -> Unit,
@@ -278,6 +285,9 @@ private fun ModelRow(
             RadioButton(selected = selected, onClick = null, enabled = installed, modifier = Modifier.padding(top = 2.dp, end = 16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(model.name, style = MaterialTheme.typography.titleMedium)
+                if (recommended) {
+                    Text(stringResource(R.string.models_recommended), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                }
                 Text(model.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     stringResource(R.string.models_meta, size, model.license),
@@ -412,8 +422,8 @@ private fun ImportRow(p: ImportProgress) {
 @Composable
 private fun SettingsModelsPreview() {
     val catalog = listOf(
-        AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
-        AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
+        AsrModel("canary-180m-es", "Canary 180M (español)", "Ligero: descarga de 207 MB y poca memoria. Fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
+        AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "El más preciso y escribe los números en cifras. Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 6, "CC-BY-4.0", emptyList()),
     )
     MysoneTheme {
         SettingsModelsContent(
@@ -422,7 +432,8 @@ private fun SettingsModelsPreview() {
             selectedId = "canary-180m-es",
             wifiOnly = true,
             ramGb = 6,
-            tests = mapOf("canary-180m-es" to SelfTest.Ok("Hola, esto es una prueba de transcripción.")),
+            recommendedId = "parakeet-v3",
+            tests = mapOf("canary-180m-es" to SelfTest.Ok("Hola, esto es una prueba de transcripción de voz.")),
             imports = listOf(
                 ImportProgress(UUID.randomUUID(), "reunion-lunes.m4a", 0.6f, done = false, error = null),
                 ImportProgress(UUID.randomUUID(), "nota-de-voz.ogg", 1f, done = true, error = null),

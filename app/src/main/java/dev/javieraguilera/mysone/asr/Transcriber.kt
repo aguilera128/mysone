@@ -42,6 +42,7 @@ class Transcriber(
     private val mutex = Mutex() // protege todo lo de abajo y serializa el trabajo nativo
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var recognizer: OfflineRecognizer? = null
+    private var modelId = "" // el de [recognizer]
     private var refs = 0
 
     /**
@@ -71,7 +72,7 @@ class Transcriber(
      */
     suspend fun transcribe(samples: FloatArray, sampleRate: Int = SAMPLE_RATE): String = mutex.withLock {
         val rec = checkNotNull(recognizer) { "Transcriber sin modelo: falta acquire()" }
-        withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate) }
+        withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate, modelId) }
     }
 
     private suspend fun load(id: String): Boolean {
@@ -87,10 +88,11 @@ class Transcriber(
             try {
                 rec = createRecognizer(model, models.modelDir(id))
                 // Autoprueba (§5.4): hay móviles en los que el modelo carga pero no devuelve nada.
-                if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE).isEmpty()) {
+                if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id).isEmpty()) {
                     R.string.asr_error_empty
                 } else {
                     recognizer = rec
+                    modelId = id
                     rec = null
                     null
                 }
@@ -154,13 +156,14 @@ internal fun createRecognizer(model: AsrModel, dir: File): OfflineRecognizer {
     return OfflineRecognizer(assetManager = null, config = OfflineRecognizerConfig(modelConfig = modelConfig))
 }
 
-internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: Int): String {
+/** [modelId]: el modelo con el que se ha creado el reconocedor (la «ñ» solo se repara con Canary). */
+internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: Int, modelId: String): String {
     if (samples.size < sampleRate / 10) return "" // < 0,1 s: nada que reconocer
     val stream = createStream()
     try {
         stream.acceptWaveform(samples, sampleRate)
         decode(stream)
-        return cleanText(getResult(stream).text)
+        return cleanText(getResult(stream).text, fixEnye = modelId == "canary-180m-es")
     } finally {
         stream.release()
     }
@@ -169,14 +172,18 @@ internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: I
 private val WHITESPACE = Regex("\\s+")
 private val LETTER_OR_DIGIT = Regex("[\\p{L}\\p{N}]")
 
-/** Espacios normalizados y «ñ» recuperadas. Sin letras ni cifras (".", "¿?" sobre ruido) cuenta como nada dicho. */
-internal fun cleanText(raw: String): String {
-    val text = restoreEnye(raw.trim().replace(WHITESPACE, " "))
+/** Espacios normalizados y, con [fixEnye], «ñ» recuperadas. Sin letras ni cifras (".", "¿?" sobre ruido) cuenta como nada dicho. */
+internal fun cleanText(raw: String, fixEnye: Boolean = false): String {
+    val spaced = raw.trim().replace(WHITESPACE, " ")
+    val text = if (fixEnye) restoreEnye(spaced) else spaced
     return if (LETTER_OR_DIGIT.containsMatchIn(text)) text else ""
 }
 
 // Canary 180M int8 a veces cambia la «ñ» por un principio de palabra: emite «▁es|pa|▁o|l» en vez de
-// «▁es|pa|ñ|ol» (tokens comprobados en el emulador con la autoprueba), y sale «espa ol», «ma ana».
+// «▁es|pa|ñ|ol» (tokens comprobados en el emulador con la frase de prueba anterior), y sale «espa ol», «ma ana».
+// Solo se aplica con Canary: en el diagnóstico de escritorio (docs/investigacion/08-diagnostico-asr.md) pasa
+// sobre todo con voces TTS (Helena) en trozos cortos; con voz humana (MLS-es, MInDS-14) acierta casi todas
+// las «ñ», y Parakeet no partió ninguna de 208.
 // ponytail: lista cerrada de palabras frecuentes (y apellidos); una que falte se queda partida. Si se ve
 // alguna más en las pruebas, añadirla aquí. Faltan adrede «niña», «seña» y «leña»: «ni a», «se a» y «le a»
 // también son dos palabras de verdad.
@@ -216,6 +223,6 @@ internal fun restoreEnye(text: String): String {
     return out.toString()
 }
 
-/** assets/selftest_es.wav: frase TTS en español, PCM16 mono 16 kHz. */
+/** assets/selftest_es.wav: «Hola, esto es una prueba de transcripción de voz.» (TTS, sin «ñ»), PCM16 mono 16 kHz. */
 internal fun selfTestSamples(context: Context): FloatArray =
     PcmFiles.readWav(context.assets.open("selftest_es.wav").use { it.readBytes() })

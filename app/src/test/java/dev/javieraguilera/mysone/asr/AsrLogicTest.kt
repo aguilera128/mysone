@@ -195,16 +195,29 @@ class AsrLogicTest {
     }
 
     @Test fun `recupera la ñ que Canary cambia por un corte de palabra`() {
-        assertEquals("Hola, esto es una prueba de transcripción en español.", cleanText("Hola, esto es una prueba de transcripción en espa ol."))
-        assertEquals("El niño de España tiene cinco años.", cleanText("El ni o de Espa a tiene cinco a os."))
-        assertEquals("Recuérdame mañana a las diez de la mañana", cleanText("Recuérdame ma ana a las diez de la ma ana"))
-        assertEquals("El señor Muñoz, cumpleaños. ESPAÑA", cleanText("El se or Mu oz, cumplea os. ESPA A"))
-        assertEquals("Mañana llamo.", cleanText("Ma ana llamo."))
+        assertEquals("Hola, esto es una prueba de transcripción en español.", cleanText("Hola, esto es una prueba de transcripción en espa ol.", fixEnye = true))
+        assertEquals("El niño de España tiene cinco años.", cleanText("El ni o de Espa a tiene cinco a os.", fixEnye = true))
+        assertEquals("Recuérdame mañana a las diez de la mañana", cleanText("Recuérdame  ma ana a las diez de la ma\nana", fixEnye = true))
+        assertEquals("El señor Muñoz, cumpleaños. ESPAÑA", cleanText("El se or Mu oz, cumplea os. ESPA A", fixEnye = true))
+        assertEquals("Mañana llamo.", cleanText("Ma ana llamo.", fixEnye = true))
     }
 
     @Test fun `no pega dos palabras que existen por separado`() {
-        assertEquals("ni a mí me gusta, se a ido y le a dado", cleanText("ni a mí me gusta, se a ido y le a dado"))
-        assertEquals("la casa es grande", cleanText("la casa es grande"))
+        assertEquals("ni a mí me gusta, se a ido y le a dado", cleanText("ni a mí me gusta, se a ido y le a dado", fixEnye = true))
+        assertEquals("la casa es grande", cleanText("la casa es grande", fixEnye = true))
+    }
+
+    @Test fun `sin fixEnye (Parakeet) no toca las palabras`() {
+        assertEquals("Este a o voy a la monta a.", cleanText("Este a o  voy a la monta a."))
+    }
+
+    // --- Recomendación de modelo por RAM ---
+
+    @Test fun `Parakeet desde 6 GB y Canary por debajo o sin dato`() {
+        assertEquals("parakeet-v3", recommendedModelId(8))
+        assertEquals("parakeet-v3", recommendedModelId(6))
+        assertEquals("canary-180m-es", recommendedModelId(5))
+        assertEquals("canary-180m-es", recommendedModelId(0))
     }
 
     private fun sha256(data: ByteArray) =

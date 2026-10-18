@@ -70,7 +70,6 @@ import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
-import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 
 // MainActivity marca onboardingDone al llamar a onFinished.
@@ -124,6 +123,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             OnboardingStep.Model -> ModelStep(
                 catalog = vm.models.catalog,
                 ramGb = vm.ramGb,
+                recommendedId = vm.recommendedModelId,
                 selectedId = vm.selectedModelId,
                 install = if (modelReady) ModelInstall.Installed else install,
                 wifiOnly = vm.wifiOnly,
@@ -357,6 +357,7 @@ private fun StatusLine(icon: ImageVector, text: String, tint: Color) {
 private fun ModelStep(
     catalog: List<AsrModel>,
     ramGb: Int,
+    recommendedId: String,
     selectedId: String,
     install: ModelInstall,
     wifiOnly: Boolean,
@@ -395,7 +396,7 @@ private fun ModelStep(
                 model = model,
                 size = Formatter.formatShortFileSize(context, model.sizeBytes),
                 // Con menos RAM de la que pide no se recomienda (Ajustes › Transcripción avisa igual).
-                recommended = model.id == AppSettings().asrModelId && fits,
+                recommended = model.id == recommendedId && fits,
                 fits = fits,
                 selected = model.id == selectedId,
                 enabled = !busy,
@@ -520,8 +521,8 @@ private fun ReadyLine(label: String, ok: Boolean) {
 // --- Vistas previas con datos falsos ---
 
 private val previewModels = listOf(
-    AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
-    AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
+    AsrModel("canary-180m-es", "Canary 180M (español)", "Ligero: descarga de 207 MB y poca memoria. Fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
+    AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "El más preciso y escribe los números en cifras. Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 6, "CC-BY-4.0", emptyList()),
 )
 
 @Preview(name = "Bienvenida · aviso legal", showBackground = true, heightDp = 900)
@@ -535,7 +536,7 @@ private fun LegalPreview() {
 private fun ModelPreview() {
     MysoneTheme {
         OnboardingFrame(index = 4, count = 7, onBack = {}) {
-            ModelStep(previewModels, ramGb = 6, selectedId = "canary-180m-es", install = ModelInstall.Downloading(0.42f), wifiOnly = true,
+            ModelStep(previewModels, ramGb = 6, recommendedId = "parakeet-v3", selectedId = "parakeet-v3", install = ModelInstall.Downloading(0.42f), wifiOnly = true,
                 onSelect = {}, onWifiOnlyChange = {}, onDownload = {}, onCancel = {}, onNext = {})
         }
     }

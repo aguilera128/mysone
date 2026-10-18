@@ -34,13 +34,15 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
     val ramGb: Int = models.deviceRamGb()
     var selectedModelId by mutableStateOf(AppSettings().asrModelId)
         private set
-    var wifiOnly by mutableStateOf(true)
+    var wifiOnly by mutableStateOf(AppSettings().downloadWifiOnly)
+        private set
 
     init {
         viewModelScope.launch {
             val s = container.settings.current()
             legalChecked = s.legalAcceptedAt != null
             selectedModelId = s.asrModelId
+            wifiOnly = s.downloadWifiOnly
         }
     }
 
@@ -62,6 +64,11 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
     fun selectModel(id: String) {
         selectedModelId = id
         container.appScope.launch { container.settings.update { it.copy(asrModelId = id) } }
+    }
+
+    fun changeWifiOnly(on: Boolean) {
+        wifiOnly = on
+        container.appScope.launch { container.settings.update { it.copy(downloadWifiOnly = on) } }
     }
 
     fun download() = models.download(selectedModelId, allowMetered = !wifiOnly)

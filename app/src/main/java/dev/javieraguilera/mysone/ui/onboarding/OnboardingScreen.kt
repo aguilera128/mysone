@@ -128,7 +128,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                 install = if (modelReady) ModelInstall.Installed else install,
                 wifiOnly = vm.wifiOnly,
                 onSelect = vm::selectModel,
-                onWifiOnlyChange = { vm.wifiOnly = it },
+                onWifiOnlyChange = vm::changeWifiOnly,
                 onDownload = vm::download,
                 onCancel = vm::cancelDownload,
                 onNext = vm::next,
@@ -521,7 +521,7 @@ private fun ReadyLine(label: String, ok: Boolean) {
 
 private val previewModels = listOf(
     AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
-    AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB; recomendado con 8 GB de RAM o más.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
+    AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
 )
 
 @Preview(name = "Bienvenida · aviso legal", showBackground = true, heightDp = 900)

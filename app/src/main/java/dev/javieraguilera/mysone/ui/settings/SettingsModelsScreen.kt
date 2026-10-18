@@ -61,6 +61,7 @@ import dev.javieraguilera.mysone.asr.ImportProgress
 import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
+import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.ui.components.BackTopBar
 import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.SectionHeader
@@ -92,6 +93,9 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     val selectedId: StateFlow<String?> = container.settings.data.map { it.asrModelId }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val wifiOnly: StateFlow<Boolean> = container.settings.data.map { it.downloadWifiOnly }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings().downloadWifiOnly)
+
     val imports: StateFlow<List<ImportProgress>> = AudioImporter.observe(container.app)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -101,6 +105,10 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     fun download(id: String, wifiOnly: Boolean) = models.download(id, allowMetered = !wifiOnly)
 
     fun cancel(id: String) = models.cancel(id)
+
+    fun setWifiOnly(on: Boolean) {
+        viewModelScope.launch { container.settings.update { it.copy(downloadWifiOnly = on) } }
+    }
 
     fun delete(id: String) {
         _tests.update { it - id }
@@ -131,6 +139,7 @@ class ModelActions(
     val choose: (String) -> Unit = {},
     val selfTest: (String) -> Unit = {},
     val pickAudio: () -> Unit = {},
+    val setWifiOnly: (Boolean) -> Unit = {},
 )
 
 @Composable
@@ -139,6 +148,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
     val vm = viewModel { SettingsModelsViewModel(container) }
     val installs by vm.installs.collectAsStateWithLifecycle()
     val selectedId by vm.selectedId.collectAsStateWithLifecycle()
+    val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val tests by vm.tests.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::import) }
@@ -146,6 +156,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         catalog = vm.catalog,
         installs = installs,
         selectedId = selectedId,
+        wifiOnly = wifiOnly,
         ramGb = vm.ramGb,
         tests = tests,
         imports = imports,
@@ -157,6 +168,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
             choose = vm::choose,
             selfTest = vm::selfTest,
             pickAudio = { pick.launch(arrayOf("audio/*")) },
+            setWifiOnly = vm::setWifiOnly,
         ),
     )
 }
@@ -166,13 +178,13 @@ private fun SettingsModelsContent(
     catalog: List<AsrModel>,
     installs: Map<String, ModelInstall>,
     selectedId: String?,
+    wifiOnly: Boolean,
     ramGb: Int,
     tests: Map<String, SelfTest>,
     imports: List<ImportProgress>,
     onBack: () -> Unit,
     actions: ModelActions,
 ) {
-    var wifiOnly by rememberSaveable { mutableStateOf(true) }
     var toDelete by rememberSaveable { mutableStateOf<String?>(null) }
     val anyInstalled = installs.values.any { it is ModelInstall.Installed }
 
@@ -184,7 +196,7 @@ private fun SettingsModelsContent(
                 title = stringResource(R.string.models_wifi_only),
                 summary = stringResource(R.string.models_wifi_only_desc),
                 checked = wifiOnly,
-                onCheckedChange = { wifiOnly = it },
+                onCheckedChange = actions.setWifiOnly,
                 // Se aplica al encolar: durante una descarga cambiarlo no haría nada.
                 enabled = installs.values.none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
             )
@@ -401,13 +413,14 @@ private fun ImportRow(p: ImportProgress) {
 private fun SettingsModelsPreview() {
     val catalog = listOf(
         AsrModel("canary-180m-es", "Canary 180M (español)", "Descarga de 207 MB, usa poca memoria y fija el idioma al español.", 207_170_046, 4, "CC-BY-4.0", emptyList()),
-        AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB; recomendado con 8 GB de RAM o más.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
+        AsrModel("parakeet-v3", "Parakeet TDT 0.6B v3", "Multilingüe (25 idiomas). Descarga de 670 MB.", 670_478_772, 8, "CC-BY-4.0", emptyList()),
     )
     MysoneTheme {
         SettingsModelsContent(
             catalog = catalog,
             installs = mapOf("canary-180m-es" to ModelInstall.Installed, "parakeet-v3" to ModelInstall.Downloading(0.42f)),
             selectedId = "canary-180m-es",
+            wifiOnly = true,
             ramGb = 6,
             tests = mapOf("canary-180m-es" to SelfTest.Ok("Hola, esto es una prueba de transcripción.")),
             imports = listOf(

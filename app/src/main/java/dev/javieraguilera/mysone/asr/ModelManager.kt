@@ -3,6 +3,8 @@ package dev.javieraguilera.mysone.asr
 import android.app.ActivityManager
 import android.app.DownloadManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.text.format.Formatter
 import android.util.Log
 import androidx.core.content.edit
@@ -45,7 +47,7 @@ enum class DownloadWait { WIFI, NETWORK }
 
 sealed interface ModelInstall {
     data object NotInstalled : ModelInstall
-    /** [waiting]: DownloadManager la tiene en pausa (sin Wi-Fi, sin red o esperando para reintentar). */
+    /** [waiting]: no avanza porque falta Wi-Fi o red (o espera para reintentar); ver [downloadWait]. */
     data class Downloading(val progress: Float, val waiting: DownloadWait? = null) : ModelInstall
     data object Verifying : ModelInstall
     data object Installed : ModelInstall
@@ -135,7 +137,10 @@ class ModelManager(private val context: Context) {
             Log.w(TAG, "No se pudo encolar la descarga: ${e.javaClass.simpleName}")
             return fail(id, context.getString(R.string.asr_error_download_start))
         }
-        prefs.edit { putString(id, ids.joinToString(",")) }
+        prefs.edit {
+            putString(id, ids.joinToString(","))
+            putBoolean(meteredKey(id), allowMetered)
+        }
         _installs.update { it + (id to ModelInstall.Downloading(0f)) }
         watch(model)
     }
@@ -144,7 +149,7 @@ class ModelManager(private val context: Context) {
         jobs.remove(id)?.cancel()
         val ids = downloadIds(id)
         if (ids.isNotEmpty()) downloads.remove(*ids)
-        prefs.edit { remove(id) }
+        forget(id)
         tmpDir(id)?.deleteRecursively()
         setState(id, if (isInstalled(id)) ModelInstall.Installed else ModelInstall.NotInstalled)
     }
@@ -203,7 +208,7 @@ class ModelManager(private val context: Context) {
                 when {
                     failed != null || rows.size < ids.size -> {
                         downloads.remove(*ids)
-                        prefs.edit { remove(model.id) }
+                        forget(model.id)
                         fail(model.id, failureMessage(failed?.reason))
                         break
                     }
@@ -214,12 +219,7 @@ class ModelManager(private val context: Context) {
                     else -> {
                         val done = model.files.filter { File(modelDir(model.id), it.name).length() == it.sizeBytes }
                             .sumOf { it.sizeBytes } + rows.sumOf { it.bytes }
-                        val paused = rows.filter { it.status == DownloadManager.STATUS_PAUSED }
-                        val waiting = when {
-                            paused.any { it.reason == DownloadManager.PAUSED_QUEUED_FOR_WIFI } -> DownloadWait.WIFI
-                            paused.isNotEmpty() -> DownloadWait.NETWORK
-                            else -> null
-                        }
+                        val waiting = downloadWait(rows.map { it.status to it.reason }, prefs.getBoolean(meteredKey(model.id), true), network())
                         setState(model.id, ModelInstall.Downloading((done.toFloat() / model.sizeBytes).coerceIn(0f, 1f), waiting))
                         delay(1_000)
                     }
@@ -245,7 +245,7 @@ class ModelManager(private val context: Context) {
             context.getString(R.string.asr_error_install)
         } finally {
             downloads.remove(*ids) // también borra los temporales que queden
-            prefs.edit { remove(model.id) }
+            forget(model.id)
             tmp?.deleteRecursively()
         }
         setState(model.id, error?.let(ModelInstall::Failed) ?: ModelInstall.Installed)
@@ -260,6 +260,19 @@ class ModelManager(private val context: Context) {
             val bytes = c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
             buildList { while (c.moveToNext()) add(Row(c.getInt(status), c.getInt(reason), c.getLong(bytes))) }
         }.orEmpty()
+
+    private fun network(): Net {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return Net.NONE
+        return if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) Net.UNMETERED else Net.METERED
+    }
+
+    private fun forget(id: String) = prefs.edit {
+        remove(id)
+        remove(meteredKey(id))
+    }
+
+    private fun meteredKey(id: String) = "$id.metered"
 
     private fun failureMessage(reason: Int?): String = when (reason) {
         null -> context.getString(R.string.asr_error_download_lost)
@@ -299,6 +312,26 @@ class ModelManager(private val context: Context) {
     private companion object {
         const val TAG = "MysoneAsr"
         const val TMP_DIR = "models-tmp"
+    }
+}
+
+internal enum class Net { NONE, METERED, UNMETERED }
+
+/**
+ * Por qué no avanza una descarga, a partir de (estado, motivo) de sus ficheros en DownloadManager. Una recién
+ * encolada sin la red que pide no llega a PAUSED: se queda en PENDING (su trabajo de JobScheduler no arranca)
+ * sin decir por qué, así que se deduce de la red que hay ahora. null = avanzando o a punto de empezar.
+ */
+internal fun downloadWait(rows: List<Pair<Int, Int>>, allowMetered: Boolean, net: Net): DownloadWait? {
+    if (rows.any { it.first == DownloadManager.STATUS_RUNNING }) return null
+    val paused = rows.filter { it.first == DownloadManager.STATUS_PAUSED }
+    return when {
+        paused.any { it.second == DownloadManager.PAUSED_QUEUED_FOR_WIFI } -> DownloadWait.WIFI
+        paused.isNotEmpty() -> DownloadWait.NETWORK // sin red, esperando para reintentar o motivo desconocido
+        rows.none { it.first == DownloadManager.STATUS_PENDING } -> null
+        net == Net.NONE -> DownloadWait.NETWORK
+        net == Net.METERED && !allowMetered -> DownloadWait.WIFI
+        else -> null
     }
 }
 

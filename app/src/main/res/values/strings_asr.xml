@@ -14,7 +14,7 @@
     <string name="asr_error_corrupt">El archivo %1$s ha llegado dañado. Vuelve a descargar el modelo.</string>
     <string name="asr_error_install">No se ha podido instalar el modelo. Comprueba el espacio libre e inténtalo de nuevo.</string>
     <string name="asr_download_title">Modelo de transcripción: %1$s</string>
-    <string name="asr_download_waiting_wifi">Esperando una red Wi-Fi para descargar (%1$d %%).</string>
+    <string name="asr_download_waiting_wifi">Esperando una red Wi-Fi para descargar (%1$d %%). Para usar los datos móviles, cancela y desactiva «Descargar solo con Wi-Fi».</string>
     <string name="asr_download_waiting_network">Sin conexión con el servidor: la descarga sigue sola cuando vuelva (%1$d %%).</string>
 
     <!-- Importar audio -->

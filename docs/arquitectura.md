@@ -165,6 +165,7 @@ data class AppSettings(
   val audioSource: String = "VOICE_RECOGNITION", // o "MIC" (voz lejana)
   val conversationGapMin: Int = 4,             // silencio que cierra una conversación (2–15)
   val asrModelId: String = "canary-180m-es",
+  val downloadWifiOnly: Boolean = true,        // modelos ASR: descargar solo con Wi-Fi
   val batterySaver: Boolean = true,            // batería < 20 % y sin cargar → se encola sin transcribir
   val retentionDays: Int = 90,                 // transcripción literal; 0 = no borrar. Resúmenes, tareas y facts se quedan
   val secureScreen: Boolean = true,            // FLAG_SECURE

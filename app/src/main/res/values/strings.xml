@@ -50,5 +50,5 @@
     <string name="model_canary_name">Canary 180M (español)</string>
     <string name="model_canary_desc">Descarga de 207 MB, usa poca memoria y fija el idioma al español.</string>
     <string name="model_parakeet_name">Parakeet TDT 0.6B v3</string>
-    <string name="model_parakeet_desc">Multilingüe (25 idiomas). Descarga de 670 MB; recomendado con 8 GB de RAM o más.</string>
+    <string name="model_parakeet_desc">Multilingüe (25 idiomas). Descarga de 670 MB.</string>
 </resources>

@@ -5,7 +5,7 @@ conversaciones con fecha y hora, genera notas, tareas y recordatorios con IA, y 
 lenguaje natural sobre todo lo escuchado. Inspirada en Bee (Amazon), sin wearable.
 
 Este documento es el **contrato** entre los módulos. Las fuentes y los datos verificados están en
-`docs/investigacion/01..07`. Si algo de aquí contradice a la investigación, manda este documento
+`docs/investigacion/01..08`. Si algo de aquí contradice a la investigación, manda este documento
 (las decisiones ya están tomadas); si contradice a la realidad del código o de la documentación
 oficial, manda la realidad: corrige y deja nota.
 
@@ -20,8 +20,8 @@ oficial, manda la realidad: corrige y deja nota.
 | SDK | `minSdk 31`, `compileSdk 37`, `targetSdk 36` | 37 obligatorio por core/Compose/Nav3; target 36 = el exigido por Play y el que podemos probar en el emulador API 36 (02, 04) |
 | Toolchain | AGP **9.1.1** (último que soporta el Android Studio instalado, Panda 3; 9.4.1 compila pero el IDE no sincroniza), Gradle 9.8.1, Kotlin 2.4.21, KSP 2.3.12, JDK = JBR 21 de Android Studio | 04. Plantilla verificada: `scratchpad/tcheck` |
 | ASR | sherpa-onnx **1.13.8** (JitPack `com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8`), ABIs `arm64-v8a` + `x86_64` | 03 |
-| Modelo ASR por defecto | **NeMo Canary 180M flash int8** (207 MB, `srcLang="es"` forzado, PnC, MLS-es 3,17 %) | Menos RAM y descarga, idioma forzable (Parakeet se pasa al inglés en frases cortas) (03, 07) |
-| Modelo alternativo | NeMo Parakeet TDT 0.6B v3 int8 (670 MB, multilingüe, recomendado con ≥ 8 GB de RAM) | 03 |
+| Modelo ASR recomendado | **Según la RAM** (`recommendedModelId(deviceRamGb())`): **NeMo Parakeet TDT 0.6B v3 int8** (670 MB, multilingüe) con **≥ 6 GB**; con menos o si no se sabe, Canary | Parakeet es el más preciso en el diagnóstico de escritorio: WER 2,8 % frente a 9,2 % de Canary, 42/42 «ñ», números en cifras. Pica en ~1,1 GB y el Memory Limiter de Android 17 deja 2 GiB al servicio con 6 GB (1 GiB con 4 GB) (08, 07 P8) |
+| Modelo ligero | **NeMo Canary 180M flash int8** (207 MB, `srcLang="es"` forzado, PnC, MLS-es 3,17 %). Valor por defecto de `AppSettings.asrModelId` | Menos RAM (~0,75–0,9 GB de pico) y descarga, idioma forzable (Parakeet se pasa al inglés con voz muy degradada o en monosílabos) (03, 07, 08) |
 | VAD | `silero_vad.onnx` (643 854 B) incluido en `assets/` | 03 |
 | BD | Room **3.0.3** (`androidx.room3`) + `BundledSQLiteDriver` + **FTS5** (`unicode61 remove_diacritics 2`, ranking `bm25`) | FTS5 no está garantizado en el SQLite del sistema; el bundled sí (04) |
 | Navegación | Navigation 3 1.2.0 | 04 |
@@ -361,13 +361,22 @@ class AppContainer(val app: Application) {
   `numThreads = 2`. Firmas exactas en `docs/investigacion/03-asr-on-device.md` §3 y snippet §8.
 - VAD Silero: `threshold 0.5`, `minSilenceDuration 0.5`, `minSpeechDuration 0.25`, `windowSize 512`;
   `maxSpeechDuration` no es tope duro → trocear a 25 s en el wrapper; `reset()` en silencio cada hora.
-- **Autoprueba** tras cargar: transcribir `assets/selftest_es.wav` (frase TTS en español, 16 kHz
-  mono); texto vacío → `TranscriberState.Error("El modelo no devuelve texto en este dispositivo…")`.
+  No bajar `minSpeechDuration`: deja fuera «Sí.»/«No.» sueltos, pero si pasan Parakeet escribe «Yeah.» y
+  Canary basura (08 §5).
+- **Autoprueba** tras cargar: transcribir `assets/selftest_es.wav` («Hola, esto es una prueba de
+  transcripción de voz.», TTS Helena, 16 kHz mono, **sin «ñ»** para que Canary no enseñe «espa ol»; cómo
+  regenerarla en 08 §8); texto vacío → `TranscriberState.Error("El modelo no devuelve texto en este dispositivo…")`.
+- **«ñ» partida** («espa ol», «ma ana»): solo con Canary, `cleanText(fixEnye = true)` las une con una lista
+  cerrada de palabras. Es sobre todo un artefacto de las voces TTS; con voz humana Canary acierta la «ñ» y
+  Parakeet no parte ninguna (08 §3).
 - Descarga de modelos con `DownloadManager` a `getExternalFilesDir("models-tmp")`, verificación de
   tamaño y SHA-256 (los de `03` §4.2), y movido a `filesDir/models/<id>/`. Opción "solo Wi-Fi" por
   defecto. URLs de Hugging Face fijadas a commit (03 §4.2).
-- Catálogo v1: `canary-180m-es` (por defecto) y `parakeet-v3` (recomendado ≥ 8 GB de RAM).
-  Licencia CC-BY-4.0: atribución en "Acerca de".
+- Catálogo v1: `canary-180m-es` (ligero, valor por defecto de `AppSettings`) y `parakeet-v3`
+  (`recommendedMinRamGb = PARAKEET_MIN_RAM_GB = 6`). El onboarding y Ajustes › Transcripción marcan
+  «Recomendado» el de `recommendedModelId(deviceRamGb())` (salvo que no llegue a su RAM mínima); el onboarding
+  lo preselecciona si el guardado no está instalado ni bajándose, y guarda `asrModelId` al elegir y al
+  descargar (la escucha carga el de `asrModelId`). Licencia CC-BY-4.0: atribución en "Acerca de".
 
 ### 5.5 Importar audio (B2)
 SAF (`OpenDocument`, `audio/*`) → `ImportWorker` (`CoroutineWorker` con `setForeground` tipo

@@ -15,6 +15,17 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ANDROID_HOME="$LO
 Los tests instrumentados (`app/src/androidTest`) prueban los DAOs y el FTS5 sobre Room en memoria
 con `BundledSQLiteDriver`.
 
+### Audio de prueba y la «ñ»
+
+No uses la voz TTS «Microsoft Helena Desktop» (la de `conv1.wav`, `conv2.wav` y la autoprueba) para juzgar
+la «ñ»: con ella Canary parte casi todas («espa ol», «ma ana») y con voz humana no
+(`docs/investigacion/08-diagnostico-asr.md`). Para eso hay voz real CC-BY-4.0 de MLS-es (16 clips con «ñ»,
+PCM16 mono 16 kHz) en
+`C:/Users/aguil/AppData/Local/Temp/claude/C--Users-aguil-Dev-mysone/70657f54-8e94-4902-a40b-c79f75e4892e/scratchpad/asrdiag/audio/mls`,
+con `refs.tsv` (`mls/<fichero>.wav<TAB>texto`, rutas relativas a `audio/`). Es el scratchpad de una sesión
+y puede desaparecer: el original está en Hugging Face, `facebook/multilingual_librispeech`, config
+`spanish`, split `test`.
+
 ### Micrófono falso (solo debug)
 
 Para probar la ruta en vivo (AudioRecord → VAD → cola → ASR → conversaciones) con audio conocido:

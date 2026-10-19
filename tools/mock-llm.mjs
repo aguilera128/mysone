@@ -101,7 +101,11 @@ function action(text) {
   return cap(cut(t, 120));
 }
 
+// La regex del recordatorio rápido (§7.4) solo decide si se pregunta al modelo. Recordatorio explícito
+// (explicitReminder) es solo cuando quien habla lo pide para sí (§7.3, Prompts): "no te olvides de comprar pan",
+// dicho a otro, o "recuérdale a Pablo…" quedan como sugerencia, igual que haría el modelo de verdad.
 const TRIGGER = /\b(recu[eé]rd(a|ame|amelo|ale)|av[ií]s(ame|ale)|no ((se|me|te|nos) ){1,2}(olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo))\b/i;
+const EXPLICIT = /\b(recu[eé]rda(me|melo)|av[ií]same|no me dejes olvidar|no se me olvide|ap[uú]nta(me|lo))\b/i;
 const DUTY = /\b(tengo que|tenemos que|tienes que|hay que)\s+(.+)/i;
 
 /** Líneas "[HH:mm:ss] texto" de la transcripción. */
@@ -115,14 +119,15 @@ function tasksFrom(lines, ref, already, onlyReminders) {
   const tasks = [];
   for (const line of lines) {
     const trigger = line.match(TRIGGER);
+    const explicit = trigger && EXPLICIT.test(trigger[0]);
     const duty = line.match(DUTY);
-    if (!trigger && (onlyReminders || !duty)) continue;
+    if (!explicit && (onlyReminders || (!trigger && !duty))) continue;
     const rest = trigger ? line.slice(trigger.index + trigger[0].length) : duty[2];
     const text = action(rest) || cap(cut(line, 120));
     if (already.has(norm(text))) continue;
     already.add(norm(text));
     const date = when(rest, ref);
-    tasks.push(trigger
+    tasks.push(explicit
       ? { text, explicitReminder: true, dueAt: null, remindAt: date, quote: line }
       : { text, explicitReminder: false, dueAt: date, remindAt: null, quote: line });
   }

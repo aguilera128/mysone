@@ -191,7 +191,12 @@
     <string name="models_import_need_model">Descarga un modelo para poder importar.</string>
     <string name="models_import_progress">Transcribiendo… %1$d %%</string>
     <string name="models_import_done">Transcrito.</string>
-    <string name="models_import_done_at">Transcrito. Lo tienes en %1$s, a las %2$s.</string>
+    <string name="models_import_done_at">Transcrito. %1$s</string>
+    <string name="models_import_where_tab">Lo tienes en %1$s, a las %2$s.</string>
+    <string name="models_import_where_day">Lo tienes el %1$s, a las %2$s.</string>
+    <string name="models_import_duplicate_title">Ya importaste este audio</string>
+    <string name="models_import_duplicate_message">Hay una conversación importada de un audio con la misma fecha de modificación. %1$s Si lo importas otra vez, la tendrás repetida.</string>
+    <string name="models_import_duplicate_confirm">Importar otra vez</string>
 
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>

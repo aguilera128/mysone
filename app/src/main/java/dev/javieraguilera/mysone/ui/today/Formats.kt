@@ -25,27 +25,24 @@ internal fun dayFull(day: String, today: String = Time.today()): String {
     return format.format(date).capitalized()
 }
 
+/** "Hoy", "Ayer" o null si es otro día. */
+@Composable
+internal fun relativeDay(day: String, today: String = Time.today()): String? = when (day) {
+    today -> stringResource(R.string.ui_day_today)
+    LocalDate.parse(today).minusDays(1).toString() -> stringResource(R.string.ui_day_yesterday)
+    else -> null
+}
+
 /** "Hoy", "Ayer" o "Martes 13 de octubre". */
 @Composable
 internal fun dayHeading(day: String): String {
     val today = Time.today()
-    return when (day) {
-        today -> stringResource(R.string.ui_day_today)
-        LocalDate.parse(today).minusDays(1).toString() -> stringResource(R.string.ui_day_yesterday)
-        else -> dayFull(day, today)
-    }
+    return relativeDay(day, today) ?: dayFull(day, today)
 }
 
 /** Etiqueta corta para el selector de día: "Hoy", "Ayer", "mar 13". */
 @Composable
-internal fun dayChip(day: String): String {
-    val today = Time.today()
-    return when (day) {
-        today -> stringResource(R.string.ui_day_today)
-        LocalDate.parse(today).minusDays(1).toString() -> stringResource(R.string.ui_day_yesterday)
-        else -> DAY_CHIP.format(LocalDate.parse(day))
-    }
-}
+internal fun dayChip(day: String): String = relativeDay(day) ?: DAY_CHIP.format(LocalDate.parse(day))
 
 /** "27 min", "1 h 5 min", "menos de 1 min". */
 @Composable

@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone.asr
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.core.content.edit
 import androidx.work.ExistingWorkPolicy
@@ -11,9 +12,12 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.container
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.withContext
 
 /** Importar un fichero de audio como conversación (§5.5). Las importaciones van de una en una. */
 object AudioImporter {
@@ -40,13 +44,27 @@ object AudioImporter {
         WorkManager.getInstance(context).enqueueUniqueWork(TAG, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
-    /** De la más antigua a la más reciente. */
+    /**
+     * Inicio de la conversación que ya se importó de este fichero, o null. Se reconoce porque termina justo en su
+     * fecha de modificación (ImportWorker); sin esa fecha no se puede saber. Si se borró, se puede importar otra vez.
+     */
+    suspend fun alreadyImported(context: Context, uri: Uri): Long? {
+        val modified = withContext(Dispatchers.IO) { lastModified(context, uri) } ?: return null
+        return context.container.db.conversations().importEndingAt(modified)?.startedAt
+    }
+
+    /** De la más antigua a la más reciente, sin las que dieron una conversación que ya se ha borrado u olvidado. */
     fun observe(context: Context): Flow<List<ImportProgress>> =
-        WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG).map { infos ->
+        combine(
+            WorkManager.getInstance(context).getWorkInfosByTagFlow(TAG),
+            context.container.db.conversations().observeImportIds(),
+        ) { all, alive ->
+            val existing = alive.toSet()
+            val infos = all.filter { info -> info.outputData.getLong(ImportWorker.KEY_CONVERSATION_ID, 0L).let { it == 0L || it in existing } }
             val prefs = prefs(context)
             val saved = prefs.all
-            // WorkManager acaba olvidando los trabajos terminados: sus nombres sobran. Con margen, por si el
-            // nombre se ha guardado y el trabajo aún no está en la lista.
+            // WorkManager acaba olvidando los trabajos terminados: sus nombres sobran, igual que los de conversaciones
+            // borradas. Con margen, por si el nombre se ha guardado y el trabajo aún no está en la lista.
             val ids = infos.map { it.id.toString() }.toSet()
             val old = System.currentTimeMillis() - STALE_MS
             val stale = saved.filter { (k, v) -> k !in ids && ((v as? String)?.substringBefore('|')?.toLongOrNull() ?: 0L) < old }.keys
@@ -77,6 +95,13 @@ object AudioImporter {
     }
 
     private fun prefs(context: Context) =context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    internal fun lastModified(context: Context, uri: Uri): Long? = try {
+        context.contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)
+            ?.use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0).takeIf { ms -> ms > 0 } else null }
+    } catch (_: RuntimeException) {
+        null
+    }
 
     private fun displayName(context: Context, uri: Uri): String? = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->

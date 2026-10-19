@@ -67,7 +67,8 @@ import dev.javieraguilera.mysone.ui.components.BackTopBar
 import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
-import dev.javieraguilera.mysone.ui.today.dayHeading
+import dev.javieraguilera.mysone.ui.today.dayFull
+import dev.javieraguilera.mysone.ui.today.relativeDay
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -130,7 +131,23 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
         }
     }
 
-    fun import(uri: Uri) = AudioImporter.enqueue(container.app, uri)
+    /** Audio ya importado a la espera de que se confirme repetirlo, con el inicio de su conversación. */
+    private val _duplicate = MutableStateFlow<Pair<Uri, Long>?>(null)
+    val duplicate: StateFlow<Pair<Uri, Long>?> = _duplicate.asStateFlow()
+
+    /** Si ese fichero ya está importado se pregunta antes: repetirlo duplica la conversación y su procesado con IA. */
+    fun import(uri: Uri) {
+        viewModelScope.launch {
+            val existing = AudioImporter.alreadyImported(container.app, uri)
+            if (existing == null) AudioImporter.enqueue(container.app, uri) else _duplicate.value = uri to existing
+        }
+    }
+
+    fun resolveDuplicate(importAgain: Boolean) {
+        val uri = _duplicate.value?.first ?: return
+        _duplicate.value = null
+        if (importAgain) AudioImporter.enqueue(container.app, uri)
+    }
 }
 
 /** Acciones de la pantalla; con valores vacíos por defecto para las vistas previas. */
@@ -153,6 +170,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val tests by vm.tests.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
+    val duplicate by vm.duplicate.collectAsStateWithLifecycle()
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::import) }
     SettingsModelsContent(
         catalog = vm.catalog,
@@ -174,6 +192,24 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
             setWifiOnly = vm::setWifiOnly,
         ),
     )
+    duplicate?.let { (_, startedAt) ->
+        ConfirmDialog(
+            title = stringResource(R.string.models_import_duplicate_title),
+            message = stringResource(R.string.models_import_duplicate_message, whereIs(startedAt)),
+            confirmLabel = stringResource(R.string.models_import_duplicate_confirm),
+            onConfirm = { vm.resolveDuplicate(importAgain = true) },
+            onDismiss = { vm.resolveDuplicate(importAgain = false) },
+        )
+    }
+}
+
+/** "Lo tienes en Hoy, a las 18:47." o, en otro día, "Lo tienes el jueves 15 de octubre, a las 18:47." */
+@Composable
+private fun whereIs(startedAt: Long): String {
+    val day = Time.dayKey(startedAt)
+    val time = Time.hourMinute(startedAt)
+    return relativeDay(day)?.let { stringResource(R.string.models_import_where_tab, it, time) }
+        ?: stringResource(R.string.models_import_where_day, dayFull(day).lowercase(Time.SPAIN), time)
 }
 
 @Composable
@@ -404,7 +440,7 @@ private fun ImportRow(p: ImportProgress) {
                 p.error != null -> Text(p.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 p.done -> Text(
                     // Con la fecha del fichero puede quedar en otro día: se dice en cuál.
-                    p.startedAt?.let { stringResource(R.string.models_import_done_at, dayHeading(Time.dayKey(it)), Time.hourMinute(it)) }
+                    p.startedAt?.let { stringResource(R.string.models_import_done_at, whereIs(it)) }
                         ?: stringResource(R.string.models_import_done),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.tertiary,

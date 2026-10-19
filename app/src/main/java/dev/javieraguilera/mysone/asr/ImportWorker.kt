@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
@@ -30,6 +29,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     private class Piece(val startSample: Long, val endSample: Long, val text: String)
 
     private var startedAt: Long? = null // de la conversación creada, para decir en qué día ha quedado
+    private var conversationId: Long? = null // para quitarla de la lista si después se borra
 
     override suspend fun doWork(): Result {
         val uri = inputData.getString(KEY_URI)?.toUri() ?: return Result.failure()
@@ -62,7 +62,11 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
         // Los errores esperables salen como éxito con mensaje: un Result.failure haría fallar también
         // las importaciones encoladas detrás (van encadenadas en un único trabajo).
-        return if (error == null) Result.success(workDataOf(KEY_STARTED_AT to startedAt)) else Result.success(workDataOf(KEY_ERROR to applicationContext.getString(error)))
+        return if (error == null) {
+            Result.success(workDataOf(KEY_STARTED_AT to startedAt, KEY_CONVERSATION_ID to conversationId))
+        } else {
+            Result.success(workDataOf(KEY_ERROR to applicationContext.getString(error)))
+        }
     }
 
     /** Devuelve el id del texto de error, o null si se ha creado la conversación. */
@@ -93,7 +97,8 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (pieces.isEmpty()) return R.string.asr_import_error_no_speech
 
         val durationMs = total * 1000 / SAMPLE_RATE
-        val startedAt = (lastModified(uri) ?: System.currentTimeMillis()) - durationMs
+        // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella.
+        val startedAt = (AudioImporter.lastModified(applicationContext, uri) ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
         // En una transacción: que nadie vea la conversación READY a medio llenar.
         val id = c.db.withWriteTransaction {
@@ -111,15 +116,9 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             convId
         }
         this.startedAt = startedAt
+        conversationId = id
         c.ai.onConversationReady(id)
         return null
-    }
-
-    private fun lastModified(uri: Uri): Long? = try {
-        applicationContext.contentResolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)
-            ?.use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0).takeIf { ms -> ms > 0 } else null }
-    } catch (_: RuntimeException) {
-        null
     }
 
     /** Notificación del servicio en primer plano (dataSync). Si el sistema no deja, sigue sin ella. */
@@ -145,6 +144,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
         const val KEY_STARTED_AT = "startedAt"
+        const val KEY_CONVERSATION_ID = "conversationId"
         private const val PROGRESS_EVERY_MS = 500L
         private const val TAG = "MysoneAsr"
         private const val CHANNEL = "import"

@@ -375,6 +375,8 @@ private fun ModelStep(
         icon = Icons.Outlined.Download,
         title = stringResource(R.string.onb_model_title),
         buttons = {
+            // Junto a los botones y no al final del cuerpo: en una pantalla alta quedaba fuera de la vista.
+            if (install != ModelInstall.NotInstalled) Box(Modifier.padding(bottom = 8.dp)) { InstallProgress(install) }
             when (install) {
                 ModelInstall.NotInstalled, is ModelInstall.Failed -> {
                     PrimaryButton(stringResource(if (install is ModelInstall.Failed) R.string.action_retry else R.string.onb_model_download, size), onDownload)
@@ -417,7 +419,6 @@ private fun ModelStep(
             }
             Switch(checked = wifiOnly, onCheckedChange = null, enabled = !busy)
         }
-        InstallProgress(install)
     }
 }
 

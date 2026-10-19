@@ -390,7 +390,8 @@ internal fun StatusCard(
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 when (status) {
-                    is ListeningStatus.Listening -> {
+                    // Con el micro ocupado la escucha sigue en marcha: las mismas acciones que la notificación (§5.1).
+                    is ListeningStatus.Listening, ListeningStatus.MicBusy -> {
                         FilledTonalButton(onClick = { onPause(15) }) { Text(stringResource(R.string.today_action_pause_15)) }
                         OutlinedButton(onClick = { onPause(60) }) { Text(stringResource(R.string.today_action_pause_60)) }
                         OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
@@ -399,7 +400,7 @@ internal fun StatusCard(
                         Button(onClick = onResume) { Text(stringResource(R.string.today_action_resume)) }
                         OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     }
-                    ListeningStatus.MicBusy, ListeningStatus.Starting ->
+                    ListeningStatus.Starting ->
                         OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     ListeningStatus.NeedsModel ->
                         Button(onClick = onOpenModels) { Text(stringResource(R.string.today_action_download_model)) }

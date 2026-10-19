@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.asr.AudioImporter
+import dev.javieraguilera.mysone.capture.ResumeNotifier
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AiSettings
@@ -116,13 +117,18 @@ class DataManager(private val container: AppContainer) {
         }
     }
 
-    /** BD, cola, chat, importaciones, ajustes de IA y clave; conserva los modelos ASR y el resto de ajustes. */
+    /**
+     * BD, cola, chat, importaciones, ajustes de IA y clave; conserva los modelos ASR y el resto de ajustes.
+     * La escucha queda detenida aunque ya la hubiera parado el sistema: sin la intención de escuchar ni el
+     * "Toca para reanudar", que si no seguirían en Hoy y MaintenanceWorker volvería a avisar (§6).
+     */
     suspend fun deleteAll() {
         db.tasks().withReminder().forEach { container.reminders.cancel(it.id) }
         db.clearAllTables()
         withContext(Dispatchers.IO) { pendingDir(container.app).listFiles()?.forEach { it.delete() } }
         AudioImporter.forgetHistory(container.app)
-        container.settings.update { it.copy(ai = AiSettings()) }
+        container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
+        ResumeNotifier.cancel(container.app)
         container.secrets.clearApiKey()
     }
 

@@ -9,8 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forum
@@ -157,47 +159,29 @@ private fun MysoneNav(
 
     val back: () -> Unit = { if (backStack.size > 1) backStack.removeLastOrNull() }
     val openConversation: (Long, Long?) -> Unit = { id, segmentId -> backStack.add(ConversationDetail(id, segmentId)) }
-    val top = backStack.lastOrNull()
+    val selectTab: (NavKey) -> Unit = { key ->
+        // La raíz (Today) se conserva; las demás pestañas van encima.
+        repeat(backStack.size - 1) { backStack.removeLastOrNull() }
+        if (key !is Today) backStack.add(key)
+    }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0), // cada pantalla gestiona sus insets
-        bottomBar = {
-            if (top != null && TABS.any { it.key::class == top::class }) {
-                NavigationBar {
-                    TABS.forEach { tab ->
-                        val selected = tab.key::class == top::class
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                // La raíz (Today) se conserva; las demás pestañas van encima.
-                                repeat(backStack.size - 1) { backStack.removeLastOrNull() }
-                                if (tab.key !is Today) backStack.add(tab.key)
-                            },
-                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
-                            label = { Text(stringResource(tab.label)) },
-                        )
-                    }
-                }
+    NavDisplay(
+        backStack = backStack,
+        onBack = back,
+        entryDecorators = listOf(
+            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
+        entryProvider = entryProvider {
+            entry<Onboarding> {
+                OnboardingScreen(onFinished = {
+                    onOnboardingFinished()
+                    backStack.clear()
+                    backStack.add(Today())
+                })
             }
-        },
-    ) { inner ->
-        NavDisplay(
-            backStack = backStack,
-            modifier = Modifier.padding(inner).consumeWindowInsets(inner),
-            onBack = back,
-            entryDecorators = listOf(
-                rememberSaveableStateHolderNavEntryDecorator(),
-                rememberViewModelStoreNavEntryDecorator(),
-            ),
-            entryProvider = entryProvider {
-                entry<Onboarding> {
-                    OnboardingScreen(onFinished = {
-                        onOnboardingFinished()
-                        backStack.clear()
-                        backStack.add(Today())
-                    })
-                }
-                entry<Today> { key ->
+            entry<Today> { key ->
+                TabScaffold(key, selectTab) {
                     TodayScreen(
                         day = key.day,
                         onOpenConversation = openConversation,
@@ -206,31 +190,61 @@ private fun MysoneNav(
                         onOpenModels = { backStack.add(SettingsModels) },
                     )
                 }
-                entry<ConversationDetail> { key -> ConversationScreen(id = key.id, segmentId = key.segmentId, onBack = back) }
-                entry<Search> { SearchScreen(onOpenConversation = openConversation, onBack = back) }
-                entry<Ask> {
+            }
+            entry<ConversationDetail> { key -> ConversationScreen(id = key.id, segmentId = key.segmentId, onBack = back) }
+            entry<Search> { SearchScreen(onOpenConversation = openConversation, onBack = back) }
+            entry<Ask> {
+                TabScaffold(Ask, selectTab) {
                     AskScreen(
                         onOpenConversation = openConversation,
                         onOpenAiSettings = { backStack.add(SettingsAi) },
                         onOpenSearch = { backStack.add(Search) },
                     )
                 }
-                entry<Tasks> { key -> TasksScreen(highlightTaskId = key.highlightTaskId, onOpenConversation = openConversation) }
-                entry<Memory> { MemoryScreen(onOpenConversation = openConversation) }
-                entry<Settings> {
-                    SettingsScreen(
-                        onBack = back,
-                        onOpenAi = { backStack.add(SettingsAi) },
-                        onOpenModels = { backStack.add(SettingsModels) },
-                        onOpenPrivacy = { backStack.add(SettingsPrivacy) },
-                        onOpenAbout = { backStack.add(About) },
+            }
+            entry<Tasks> { key ->
+                TabScaffold(key, selectTab) { TasksScreen(highlightTaskId = key.highlightTaskId, onOpenConversation = openConversation) }
+            }
+            entry<Memory> { TabScaffold(Memory, selectTab) { MemoryScreen(onOpenConversation = openConversation) } }
+            entry<Settings> {
+                SettingsScreen(
+                    onBack = back,
+                    onOpenAi = { backStack.add(SettingsAi) },
+                    onOpenModels = { backStack.add(SettingsModels) },
+                    onOpenPrivacy = { backStack.add(SettingsPrivacy) },
+                    onOpenAbout = { backStack.add(About) },
+                )
+            }
+            entry<SettingsAi> { SettingsAiScreen(onBack = back) }
+            entry<SettingsModels> { SettingsModelsScreen(onBack = back) }
+            entry<SettingsPrivacy> { SettingsPrivacyScreen(onBack = back) }
+            entry<About> { AboutScreen(onBack = back) }
+        },
+    )
+}
+
+/**
+ * Pestaña con la barra inferior. La barra va dentro de cada entrada y no en un Scaffold alrededor de NavDisplay:
+ * así entra y sale con su pantalla en el mismo fundido, en vez de aparecer de golpe sobre la que se va.
+ */
+@Composable
+private fun TabScaffold(current: NavKey, onSelect: (NavKey) -> Unit, content: @Composable () -> Unit) {
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0), // cada pantalla gestiona sus insets
+        bottomBar = {
+            NavigationBar {
+                TABS.forEach { tab ->
+                    val selected = tab.key::class == current::class
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = { onSelect(tab.key) },
+                        icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
+                        label = { Text(stringResource(tab.label)) },
                     )
                 }
-                entry<SettingsAi> { SettingsAiScreen(onBack = back) }
-                entry<SettingsModels> { SettingsModelsScreen(onBack = back) }
-                entry<SettingsPrivacy> { SettingsPrivacyScreen(onBack = back) }
-                entry<About> { AboutScreen(onBack = back) }
-            },
-        )
+            }
+        },
+    ) { inner ->
+        Box(Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) { content() }
     }
 }

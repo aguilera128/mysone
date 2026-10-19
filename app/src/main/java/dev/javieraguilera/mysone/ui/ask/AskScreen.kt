@@ -312,7 +312,7 @@ private fun ErrorBar(error: AiError, onRetry: () -> Unit, onDismiss: () -> Unit,
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
                 if (error == AiError.AUTH) {
                     TextButton(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_open_ai_settings)) }
-                } else if (error == AiError.INSECURE_URL) {
+                } else if (error == AiError.INSECURE_URL || error == AiError.TLS) {
                     TextButton(onClick = onOpenAiSettings) { Text(stringResource(R.string.ask_open_ai_url)) }
                 } else if (error != AiError.REFUSAL) {
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }

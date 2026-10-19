@@ -36,6 +36,7 @@
     <string name="ask_error_bad_output">La respuesta del proveedor ha llegado incompleta. Vuelve a intentarlo.</string>
     <string name="ask_error_refusal">El modelo se ha negado a responder esta pregunta.</string>
     <string name="ask_error_insecure_url">La URL de la IA empieza por http:// y Mysone solo se conecta por https://. Cámbiala en Ajustes › Inteligencia artificial.</string>
+    <string name="ask_error_tls">No se puede abrir una conexión segura con el proveedor de IA: el certificado no es válido o esa dirección no usa HTTPS. Si es un servidor propio, revisa su certificado y la URL en Ajustes › Inteligencia artificial.</string>
     <string name="ask_error_other">No se ha podido responder. Inténtalo de nuevo.</string>
 
     <!-- Tareas -->

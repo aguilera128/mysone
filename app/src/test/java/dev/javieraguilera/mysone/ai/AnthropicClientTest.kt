@@ -1,6 +1,8 @@
 package dev.javieraguilera.mysone.ai
 
 import dev.javieraguilera.mysone.core.AppJson
+import java.net.ServerSocket
+import kotlin.concurrent.thread
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -140,6 +142,25 @@ class AnthropicClientTest {
         val tlsOnly = OkHttpClient.Builder().connectionSpecs(listOf(ConnectionSpec.MODERN_TLS)).build()
         assertKind(LlmErrorKind.INSECURE_URL) { AnthropicClient(server.url("/").toString(), "sk-test", tlsOnly).complete(req) }
         assertEquals(0, server.requestCount)
+    }
+
+    @Test fun `un servidor sin TLS en una URL https es TLS y no se reintenta`() = runTest {
+        // Como https://10.0.2.2:8787 contra el servidor falso, que solo habla HTTP: el saludo TLS falla con SSLException.
+        ServerSocket(0).use { plain ->
+            thread(isDaemon = true) {
+                runCatching {
+                    while (true) plain.accept().use { s ->
+                        s.soTimeout = 5_000
+                        s.getInputStream().read(ByteArray(16_384)) // el ClientHello; sin leerlo, cerrar daría "connection reset"
+                        s.getOutputStream().write("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                        runCatching { s.getInputStream().readAllBytes() } // hasta que el cliente cierre
+                    }
+                }
+            }
+            val e = runCatching { AnthropicClient("https://127.0.0.1:${plain.localPort}", "sk-test").complete(req) }.exceptionOrNull()
+            assertEquals(e?.message, LlmErrorKind.TLS, (e as LlmException).kind)
+            assertFalse(e.retryable)
+        }
     }
 
     @Test fun `parseAnthropic sin bloque de texto es BAD_OUTPUT`() {

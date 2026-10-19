@@ -7,6 +7,7 @@ import dev.javieraguilera.mysone.data.AiSettings
 import java.io.IOException
 import java.net.UnknownServiceException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -50,6 +51,8 @@ enum class LlmErrorKind(@StringRes val messageRes: Int) {
     REFUSAL(R.string.ai_error_refusal),
     /** http:// que el networkSecurityConfig no deja (release): hay que cambiar la URL a https://. */
     INSECURE_URL(R.string.ai_error_insecure_url),
+    /** El servidor no da una conexión TLS válida (certificado, o sin https en esa dirección). Hay red: no es NETWORK. */
+    TLS(R.string.ai_error_tls),
 }
 
 private val RETRYABLE = setOf(LlmErrorKind.RATE, LlmErrorKind.NETWORK, LlmErrorKind.SERVER)
@@ -97,6 +100,9 @@ internal suspend fun OkHttpClient.postJson(url: String, headers: Map<String, Str
         } catch (_: UnknownServiceException) {
             // http:// que el networkSecurityConfig no deja (release): reintentar no lo arregla, hay que cambiar la URL.
             throw LlmException(LlmErrorKind.INSECURE_URL, "Texto plano no permitido", retryable = false)
+        } catch (e: SSLException) {
+            // Certificado no válido o caducado, o un servidor sin TLS en una URL https://: reintentar no lo arregla.
+            throw LlmException(LlmErrorKind.TLS, e.javaClass.simpleName)
         } catch (e: IOException) {
             throw LlmException(LlmErrorKind.NETWORK, e.javaClass.simpleName)
         }

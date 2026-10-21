@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ai
 
+import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
@@ -88,6 +89,8 @@ class AskEngine(private val container: AppContainer) {
         val retry = recent.lastOrNull()?.let { it.role == ChatRole.USER && it.text == q } == true
         val history = (if (retry) recent.dropLast(1) else recent).takeLast(HISTORY)
         if (!retry) chat.insert(ChatMessage(role = ChatRole.USER, text = q, createdAt = System.currentTimeMillis()))
+        // Olvidar o borrar mientras llega la respuesta: lo que trae puede ser de lo borrado y no se guarda.
+        val epoch = container.data.epoch
         return try {
             val zone = Time.zone()
             val now = System.currentTimeMillis()
@@ -102,16 +105,21 @@ class AskEngine(private val container: AppContainer) {
             ).text.trim()
             val cited = Citations.parse(raw)
             val existing = if (cited.isEmpty()) emptySet() else container.db.conversations().byIds(cited).mapTo(mutableSetOf()) { it.id }
-            val valid = cited.filter { it in existing }
             // Un marcador a una conversación que no existe no lleva a ningún sitio: fuera.
             val text = Citations.MARKER.replace(raw) { if (it.groupValues[1].toLong() in existing) it.value else "" }.trim()
+            // Vacía (o solo con marcadores a conversaciones borradas): guardada, la API rechazaría el historial siguiente.
+            if (text.isEmpty()) throw LlmException(LlmErrorKind.BAD_OUTPUT, "Respuesta vacía")
             val answer = ChatMessage(
                 role = ChatRole.ASSISTANT,
                 text = text,
-                citations = valid.takeIf { it.isNotEmpty() }?.let { AppJson.encodeToString(it) },
+                // Todas las que han podido llegar a la respuesta, no solo las citadas: con cualquiera de ellas se borra (§7.5).
+                citations = AppJson.encodeToString(context.sources),
                 createdAt = System.currentTimeMillis(),
             )
-            Result.success(answer.copy(id = chat.insert(answer)))
+            val saved = container.db.withWriteTransaction {
+                if (container.data.epoch != epoch) null else answer.copy(id = chat.insert(answer))
+            }
+            saved?.let { Result.success(it) } ?: Result.failure(IllegalStateException("Datos cambiados durante la pregunta"))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -162,12 +170,17 @@ class AskEngine(private val container: AppContainer) {
             }
         }
 
+        val digests = db.digests().inRange(fromDay, toDay, MAX_DIGESTS)
+        val digestDays = digests.mapTo(mutableSetOf()) { it.day }
         return AskContext(
             conversations = convs.filterNot { it.isNoise },
             segments = picked.values.sortedWith(compareBy({ it.conversationId }, { it.startedAt })),
-            digests = db.digests().inRange(fromDay, toDay, MAX_DIGESTS),
+            digests = digests,
             tasks = db.tasks().listByState(TaskState.OPEN, MAX_TASKS),
             facts = db.facts().listByState(FactState.CONFIRMED, MAX_FACTS),
+            // Lo que cuenta un resumen diario sale de las conversaciones de su día.
+            digestSources = if (digestDays.isEmpty()) emptyList() else db.conversations().inRange(from, to, Int.MAX_VALUE)
+                .filter { Time.dayKey(it.startedAt, zone) in digestDays }.map { it.id },
         )
     }
 
@@ -198,7 +211,14 @@ internal class AskContext(
     val digests: List<DailyDigest>,
     val tasks: List<TaskItem>,
     val facts: List<Fact>,
-)
+    /** Conversaciones de los días de [digests]. */
+    val digestSources: List<Long> = emptyList(),
+) {
+    /** Conversaciones de las que sale algo de lo enviado: resúmenes, fragmentos, resúmenes diarios, tareas y datos. */
+    val sources: List<Long>
+        get() = (conversations.map { it.id } + segments.map { it.conversationId } + digestSources +
+            tasks.mapNotNull { it.conversationId } + facts.mapNotNull { it.conversationId }).distinct().sorted()
+}
 
 private val WORD = Regex("[\\p{L}\\p{N}]+")
 
@@ -234,7 +254,8 @@ private fun String?.toLocalDate(): LocalDate? = this?.trim()?.take(10)?.let { ru
 
 /** Anthropic y algunos compatibles exigen empezar por el usuario y alternar turnos: se juntan los seguidos. */
 internal fun alternating(messages: List<LlmMessage>): List<LlmMessage> =
-    messages.dropWhile { it.role != ChatRole.USER }.fold(mutableListOf()) { acc, m ->
+    // Un turno vacío da 400 en Anthropic (todos menos el último del asistente tienen que llevar texto).
+    messages.filter { it.text.isNotBlank() }.dropWhile { it.role != ChatRole.USER }.fold(mutableListOf()) { acc, m ->
         if (acc.lastOrNull()?.role == m.role) acc[acc.lastIndex] = m.copy(text = acc.last().text + "\n\n" + m.text) else acc += m
         acc
     }

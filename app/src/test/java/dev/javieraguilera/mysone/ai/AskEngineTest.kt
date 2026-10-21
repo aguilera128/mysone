@@ -1,5 +1,13 @@
 package dev.javieraguilera.mysone.ai
 
+import dev.javieraguilera.mysone.data.ConvSource
+import dev.javieraguilera.mysone.data.ConvState
+import dev.javieraguilera.mysone.data.Conversation
+import dev.javieraguilera.mysone.data.Fact
+import dev.javieraguilera.mysone.data.FactState
+import dev.javieraguilera.mysone.data.Segment
+import dev.javieraguilera.mysone.data.TaskItem
+import dev.javieraguilera.mysone.data.TaskState
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -52,5 +60,26 @@ class AskEngineTest {
             alternating(msgs),
         )
         assertTrue(alternating(emptyList()).isEmpty())
+    }
+
+    @Test fun `una respuesta vacía guardada no llega al historial`() {
+        val msgs = listOf(LlmMessage("user", "u1"), LlmMessage("assistant", " "), LlmMessage("user", "u2"))
+        assertEquals(listOf(LlmMessage("user", "u1\n\nu2")), alternating(msgs))
+    }
+
+    @Test fun `el contexto de una respuesta son todas las conversaciones de las que sale algo`() {
+        fun conv(id: Long) = Conversation(id = id, startedAt = now, endedAt = now, source = ConvSource.MIC, state = ConvState.DONE)
+        val ctx = AskContext(
+            conversations = listOf(conv(1), conv(2)),
+            segments = listOf(Segment(10, 3, now, now, "x")),
+            digests = emptyList(),
+            tasks = listOf(
+                TaskItem(text = "t", state = TaskState.OPEN, conversationId = 4, createdAt = now),
+                TaskItem(text = "a mano", state = TaskState.OPEN, createdAt = now),
+            ),
+            facts = listOf(Fact(text = "f", state = FactState.CONFIRMED, conversationId = 5, createdAt = now)),
+            digestSources = listOf(6, 1),
+        )
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L), ctx.sources)
     }
 }

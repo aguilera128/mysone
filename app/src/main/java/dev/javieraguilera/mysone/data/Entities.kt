@@ -159,7 +159,7 @@ data class ChatMessage(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val role: String, // ChatRole
     val text: String,
-    val citations: String? = null, // JSON array de conversationId
+    val citations: String? = null, // JSON array de conversationId: todas las de su contexto, citadas o no
     val createdAt: Long,
 )
 

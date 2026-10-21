@@ -2,8 +2,11 @@ package dev.javieraguilera.mysone.tasks
 
 import android.content.Context
 import android.net.Uri
+import androidx.room3.executeSQL
+import androidx.room3.useWriterConnection
 import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
+import dev.javieraguilera.mysone.ai.DigestBuilder
 import dev.javieraguilera.mysone.asr.AudioImporter
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.capture.ListeningService
@@ -24,6 +27,7 @@ import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,6 +58,14 @@ internal fun pendingDir(context: Context) = File(context.filesDir, "pending")
 class DataManager(private val container: AppContainer) {
     private val db get() = container.db
 
+    private val _epoch = AtomicInteger()
+
+    /**
+     * Sube antes de cada olvido o borrado. Lo que se preparó con los datos de antes y se guarda después (la
+     * respuesta de Preguntar, que tarda segundos en llegar) lo mira para no volver a escribir lo borrado.
+     */
+    val epoch: Int get() = _epoch.get()
+
     /**
      * Segmentos y cola de los últimos [minutes], y lo derivado de ellos (06 §6.1.3): las conversaciones tocadas
      * pierden el resumen y las tareas y facts que salían de lo olvidado (lo que el usuario aceptó de lo que queda
@@ -67,12 +79,16 @@ class DataManager(private val container: AppContainer) {
         val now = System.currentTimeMillis()
         val since = now - minutes * MINUTE_MS
         ListeningController.markForgotten(since, now)
+        _epoch.incrementAndGet()
         val (touched, files) = ListeningService.book.withLock {
             db.withWriteTransaction {
                 val pending = db.pendingAudio().since(since)
                 // Un trozo dura como mucho 25 s: los que terminan después de since empezaron después de since - 1 min.
                 val segments = db.segments().inRange(since - MINUTE_MS, Long.MAX_VALUE).filter { it.endedAt > since }
                 val touched = (segments.map { it.conversationId } + pending.map { it.conversationId }).toSet()
+                // El resumen diario va por el día en que empezó cada conversación: una que cruza la medianoche
+                // lleva lo olvidado al resumen de ayer aunque [since] ya sea hoy.
+                val firstStart = touched.mapNotNull { db.conversations().get(it)?.startedAt }.minOrNull() ?: since
                 db.pendingAudio().deleteSince(since)
                 db.segments().deleteSince(since)
                 for (id in touched) {
@@ -89,18 +105,20 @@ class DataManager(private val container: AppContainer) {
                     val end = (left.map { it.endedAt } + leftPending.map { it.endedAt }).max()
                     db.conversations().resetForgotten(id, starts.min(), end)
                 }
-                deleteDigests(since, now)
+                deleteDigests(minOf(since, firstStart), now)
                 dropChat(touched)
                 touched to pending.map { it.path }
             }
         }
         files.forEach { pendingFile(it).delete() }
+        flushWal()
         // Las tocadas que siguen vivas se vuelven a resumir sin lo olvidado (las OPEN y las borradas se saltan).
         touched.forEach { container.ai.onConversationReady(it) }
     }
 
     /** En cascada: segmentos, cola, tareas y facts. También sus ficheros de audio, sus alarmas y el resumen del día. */
     suspend fun deleteConversation(id: Long) {
+        _epoch.incrementAndGet()
         // Con el cerrojo de la captura: ningún trozo nuevo de la cola se queda sin borrar su fichero.
         val files = ListeningService.book.withLock {
             db.withWriteTransaction {
@@ -114,6 +132,7 @@ class DataManager(private val container: AppContainer) {
             }
         }
         files.forEach { pendingFile(it).delete() }
+        flushWal()
     }
 
     /** Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. */
@@ -145,11 +164,14 @@ class DataManager(private val container: AppContainer) {
     suspend fun deleteAll() {
         // Antes que la BD: una importación a medias guardaría su conversación después del borrado.
         AudioImporter.cancelAll(container.app)
+        _epoch.incrementAndGet()
         ListeningService.book.withLock {
             db.tasks().withReminder().forEach { container.reminders.cancel(it.id) }
             db.clearAllTables()
             withContext(Dispatchers.IO) { pendingDir(container.app).listFiles()?.forEach { it.delete() } }
         }
+        flushWal()
+        DigestBuilder.forgetAttempts(container.app)
         ListeningService.forgetSession(container.app)
         AudioImporter.forgetHistory(container.app)
         container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
@@ -174,14 +196,22 @@ class DataManager(private val container: AppContainer) {
     }
 
     /**
-     * Las respuestas de Preguntar copian lo que dijeron las conversaciones que citan: con ellas se van la
-     * respuesta y su pregunta. Si no, lo olvidado seguiría en pantalla y volvería al proveedor con el historial (§7.5).
+     * Las respuestas de Preguntar copian lo que dijeron las conversaciones de su contexto (las citadas, y también las
+     * que llegaron por un resumen diario, una tarea o un dato): con ellas se van la respuesta y su pregunta. Si no, lo
+     * olvidado seguiría en pantalla y volvería al proveedor con el historial (§7.5).
      */
     private suspend fun dropChat(conversationIds: Set<Long>) {
         if (conversationIds.isEmpty()) return
         val ids = chatToForget(db.chat().all(), conversationIds)
         if (ids.isNotEmpty()) db.chat().delete(ids)
     }
+
+    /**
+     * Las páginas borradas ya se ponen a cero (el SQLite incluido se compila con SQLITE_SECURE_DELETE), pero en el
+     * WAL quedan sus versiones anteriores hasta que se reutiliza: se vacía (06 §6.1.11). Si hay lecturas en curso,
+     * SQLite no lo trunca y queda para el siguiente borrado.
+     */
+    private suspend fun flushWal() = db.useWriterConnection { it.executeSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
 
     /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello. */
     private suspend fun deleteDigests(fromMs: Long, toMs: Long) = db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
@@ -193,7 +223,7 @@ class DataManager(private val container: AppContainer) {
         private const val MINUTE_MS = 60_000L
         private const val DAY_MS = 24 * 3_600_000L
 
-        /** Ids de las respuestas que citan alguna de [conversationIds] y de la pregunta que las precede. */
+        /** Ids de las respuestas con alguna de [conversationIds] en su contexto y de la pregunta que las precede. */
         internal fun chatToForget(messages: List<ChatMessage>, conversationIds: Set<Long>): List<Long> {
             val out = ArrayList<Long>()
             messages.forEachIndexed { i, m ->

@@ -84,6 +84,7 @@ object AudioImporter {
                         else -> null
                     },
                     startedAt = info.outputData.getLong(ImportWorker.KEY_STARTED_AT, 0L).takeIf { it > 0 },
+                    partial = info.outputData.getBoolean(ImportWorker.KEY_PARTIAL, false),
                 )
             }.sortedBy { it.first ?: 0L }.map { it.second }
         }
@@ -132,7 +133,10 @@ object AudioImporter {
     }
 }
 
-/** [startedAt]: inicio de la conversación creada (para decir en qué día ha quedado), si ya ha terminado bien. */
+/**
+ * [startedAt]: inicio de la conversación creada (para decir en qué día ha quedado), si ya ha terminado bien.
+ * [partial]: el final del fichero estaba dañado y solo se ha guardado lo anterior.
+ */
 data class ImportProgress(
     val id: UUID,
     val name: String,
@@ -140,4 +144,5 @@ data class ImportProgress(
     val done: Boolean,
     val error: String?,
     val startedAt: Long? = null,
+    val partial: Boolean = false,
 )

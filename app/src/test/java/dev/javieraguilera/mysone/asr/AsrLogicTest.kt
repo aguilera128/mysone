@@ -220,6 +220,28 @@ class AsrLogicTest {
         assertEquals("canary-180m-es", recommendedModelId(0))
     }
 
+    // --- Modelo elegido sin instalar ---
+
+    @Test fun `si el elegido falta y hay otro instalado se elige ese`() {
+        val canary = "canary-180m-es"
+        val parakeet = "parakeet-v3"
+        // Borrado el elegido (o "Ahora no" con otro marcado): pasa al instalado.
+        assertEquals(parakeet, fallbackModelId(mapOf(canary to ModelInstall.NotInstalled, parakeet to ModelInstall.Installed), canary))
+        assertEquals(parakeet, fallbackModelId(mapOf(canary to ModelInstall.Failed("x"), parakeet to ModelInstall.Installed), canary))
+        // El elegido vale, o se está bajando a propósito, o no hay otro: se deja.
+        assertEquals(null, fallbackModelId(mapOf(canary to ModelInstall.Installed, parakeet to ModelInstall.Installed), canary))
+        assertEquals(null, fallbackModelId(mapOf(canary to ModelInstall.Downloading(0.3f), parakeet to ModelInstall.Installed), canary))
+        assertEquals(null, fallbackModelId(mapOf(canary to ModelInstall.Verifying, parakeet to ModelInstall.Installed), canary))
+        assertEquals(null, fallbackModelId(mapOf(canary to ModelInstall.NotInstalled, parakeet to ModelInstall.Downloading(0.5f)), canary))
+    }
+
+    @Test fun `la descarga que espera red se mira cada 30 s si nadie la ve`() {
+        assertEquals(1_000L, pollDelayMs(waiting = null, observed = false))
+        assertEquals(1_000L, pollDelayMs(waiting = DownloadWait.WIFI, observed = true))
+        assertEquals(30_000L, pollDelayMs(waiting = DownloadWait.WIFI, observed = false))
+        assertEquals(30_000L, pollDelayMs(waiting = DownloadWait.NETWORK, observed = false))
+    }
+
     private fun sha256(data: ByteArray) =
         MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
 

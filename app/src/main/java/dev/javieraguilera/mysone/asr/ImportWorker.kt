@@ -21,6 +21,7 @@ import dev.javieraguilera.mysone.data.ConvSource
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.Segment
+import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Decodifica, segmenta con su propio VAD, transcribe y guarda una conversación IMPORT en estado READY (§5.5). */
@@ -30,6 +31,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     private var startedAt: Long? = null // de la conversación creada, para decir en qué día ha quedado
     private var conversationId: Long? = null // para quitarla de la lista si después se borra
+    private var partial = false // el final del fichero no se pudo leer: se guardó lo de antes
 
     override suspend fun doWork(): Result {
         val uri = inputData.getString(KEY_URI)?.toUri() ?: return Result.failure()
@@ -64,7 +66,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // Los errores esperables salen como éxito con mensaje: un Result.failure haría fallar también
         // las importaciones encoladas detrás (van encadenadas en un único trabajo).
         return if (error == null) {
-            Result.success(workDataOf(KEY_STARTED_AT to startedAt, KEY_CONVERSATION_ID to conversationId))
+            Result.success(workDataOf(KEY_STARTED_AT to startedAt, KEY_CONVERSATION_ID to conversationId, KEY_PARTIAL to partial))
         } else {
             Result.success(workDataOf(KEY_ERROR to applicationContext.getString(error)))
         }
@@ -82,16 +84,25 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     if (text.isNotEmpty()) pieces += Piece(chunk.startSample, chunk.startSample + chunk.samples.size, text)
                 }
             }
-            AudioDecoder.decode(applicationContext, uri) { samples, progress ->
-                total += samples.size
-                transcribe(vad.accept(samples))
-                // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
-                val now = System.currentTimeMillis()
-                if (now - shownAt >= PROGRESS_EVERY_MS) {
-                    shownAt = now
-                    setProgress(workDataOf(KEY_PROGRESS to progress))
-                    showProgress(progress)
+            try {
+                AudioDecoder.decode(applicationContext, uri) { samples, progress ->
+                    total += samples.size
+                    transcribe(vad.accept(samples))
+                    // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
+                    val now = System.currentTimeMillis()
+                    if (now - shownAt >= PROGRESS_EVERY_MS) {
+                        shownAt = now
+                        setProgress(workDataOf(KEY_PROGRESS to progress))
+                        showProgress(progress)
+                    }
                 }
+            } catch (e: Exception) {
+                // Fichero dañado o cortado a mitad (CodecException, IOException del proveedor): lo ya transcrito se
+                // guarda, que repetir fallaría en el mismo sitio. Sin nada transcrito, el error de siempre.
+                val damaged = (e is IllegalStateException && e !is CancellationException) || e is IOException
+                if (!damaged || total == 0L) throw e
+                Log.w(TAG, "Importación cortada: ${e.javaClass.simpleName}")
+                partial = true
             }
             transcribe(vad.flush())
         }
@@ -148,6 +159,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_ERROR = "error"
         const val KEY_STARTED_AT = "startedAt"
         const val KEY_CONVERSATION_ID = "conversationId"
+        const val KEY_PARTIAL = "partial"
         private const val PROGRESS_EVERY_MS = 500L
         private const val TAG = "MysoneAsr"
         private const val CHANNEL = "import"

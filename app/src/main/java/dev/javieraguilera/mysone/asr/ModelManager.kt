@@ -209,7 +209,7 @@ class ModelManager(private val context: Context) {
         else Result.success(text)
     }
 
-    /** Sigue las descargas de [model] cada segundo hasta que acaban, fallan o se cancelan. */
+    /** Sigue las descargas de [model] hasta que acaban, fallan o se cancelan (ver [pollDelayMs]). */
     private fun watch(model: AsrModel) {
         jobs[model.id] = scope.launch {
             while (isActive) {
@@ -233,7 +233,7 @@ class ModelManager(private val context: Context) {
                             .sumOf { it.sizeBytes } + rows.sumOf { it.bytes }
                         val waiting = downloadWait(rows.map { it.status to it.reason }, prefs.getBoolean(meteredKey(model.id), true), network())
                         setState(model.id, ModelInstall.Downloading((done.toFloat() / model.sizeBytes).coerceIn(0f, 1f), waiting))
-                        delay(1_000)
+                        delay(pollDelayMs(waiting, observed = _installs.subscriptionCount.value > 0))
                     }
                 }
             }
@@ -356,11 +356,28 @@ internal fun downloadWait(rows: List<Pair<Int, Int>>, allowMetered: Boolean, net
     }
 }
 
+/**
+ * Cada segundo mientras baja o alguien mira la pantalla de modelos. Esperando Wi-Fi o red (pueden ser días), cada
+ * 30 s: es lo que tarda como mucho en verse que ha empezado o acabado, y no despierta al proveedor de descargas cada
+ * segundo con la escucha manteniendo el proceso vivo.
+ */
+internal fun pollDelayMs(waiting: DownloadWait?, observed: Boolean): Long = if (waiting == null || observed) 1_000 else 30_000
+
+/**
+ * Modelo que hay que elegir porque el elegido no está ni se está bajando y hay otro instalado (se borró el elegido,
+ * se bajó otro, "Ahora no" en la bienvenida con otro marcado); null si el elegido vale. La escucha y la importación
+ * usan solo el elegido.
+ */
+internal fun fallbackModelId(installs: Map<String, ModelInstall>, chosen: String): String? {
+    if (installs[chosen].let { it is ModelInstall.Installed || it is ModelInstall.Downloading || it == ModelInstall.Verifying }) return null
+    return installs.entries.firstOrNull { it.value is ModelInstall.Installed }?.key
+}
+
 internal fun AsrModel.hasFilesIn(dir: File): Boolean = files.all { File(dir, it.name).length() == it.sizeBytes }
 
 /**
  * Copia [src] a [dst] calculando el SHA-256 al vuelo (una sola lectura de cientos de MB). Escribe en
- * `<dst>.part` y solo renombra si cuadran tamaño y hash; si no, no deja nada y devuelve false.
+ * `<dst>.part`, lo lleva al disco y solo renombra si cuadran tamaño y hash; si no, no deja nada y devuelve false.
  */
 internal fun copyVerified(src: File, dst: File, size: Long, sha256: String?): Boolean {
     if (src.length() != size) return false
@@ -376,6 +393,9 @@ internal fun copyVerified(src: File, dst: File, size: Long, sha256: String?): Bo
                     digest.update(buf, 0, n)
                     output.write(buf, 0, n)
                 }
+                // En disco antes de renombrar: si no, un apagón justo después puede dejar el nombre definitivo con su
+                // tamaño y los datos sin escribir, y el modelo se daría por instalado (solo se miran tamaños).
+                output.fd.sync()
             }
         }
         val hex = digest.digest().joinToString("") { "%02x".format(it) }

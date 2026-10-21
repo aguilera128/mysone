@@ -5,9 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.StrictMode
 import dev.javieraguilera.mysone.ai.ProcessWorker
+import dev.javieraguilera.mysone.asr.fallbackModelId
 import dev.javieraguilera.mysone.tasks.MaintenanceWorker
 import io.sentry.android.core.SentryAndroid
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MysoneApp : Application() {
@@ -28,6 +32,13 @@ class MysoneApp : Application() {
         MaintenanceWorker.schedule(this)
         // Al configurar la IA (o al arrancar ya configurada) se procesa lo que esperaba en READY.
         container.appScope.launch { container.ai.isConfigured.filter { it }.collect { ProcessWorker.enqueue(this@MysoneApp) } }
+        // Escucha e importación usan solo el modelo elegido: si falta y hay otro instalado, se elige ese.
+        container.appScope.launch {
+            val models = container.models
+            combine(models.installs, container.settings.data.map { it.asrModelId }) { installs, chosen -> fallbackModelId(installs, chosen) }
+                .filterNotNull()
+                .collect { container.settings.update { s -> fallbackModelId(models.installs.value, s.asrModelId)?.let { s.copy(asrModelId = it) } ?: s } }
+        }
     }
 
     /** Solo con DSN en la compilación. Ni PII, ni breadcrumbs, ni adjuntos, ni textos de error: solo tipo y pila. */

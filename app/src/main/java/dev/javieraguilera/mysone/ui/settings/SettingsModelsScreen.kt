@@ -68,7 +68,7 @@ import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import dev.javieraguilera.mysone.ui.today.dayFull
-import dev.javieraguilera.mysone.ui.today.relativeDay
+import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -203,13 +203,18 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
     }
 }
 
-/** "Lo tienes en Hoy, a las 18:47." o, en otro día, "Lo tienes el jueves 15 de octubre, a las 18:47." */
+/** "Lo tienes en Hoy, a las 18:47.", "Lo tienes en el día de ayer…" o "Lo tienes el jueves 15 de octubre, a las 18:47." */
 @Composable
 private fun whereIs(startedAt: Long): String {
     val day = Time.dayKey(startedAt)
     val time = Time.hourMinute(startedAt)
-    return relativeDay(day)?.let { stringResource(R.string.models_import_where_tab, it, time) }
-        ?: stringResource(R.string.models_import_where_day, dayFull(day).lowercase(Time.SPAIN), time)
+    val today = Time.today()
+    return when (day) {
+        // "Hoy" es la pestaña; "Ayer" no lo es, y "en Ayer" no se dice.
+        today -> stringResource(R.string.models_import_where_tab, stringResource(R.string.ui_day_today), time)
+        LocalDate.parse(today).minusDays(1).toString() -> stringResource(R.string.models_import_where_yesterday, time)
+        else -> stringResource(R.string.models_import_where_day, dayFull(day).lowercase(Time.SPAIN), time)
+    }
 }
 
 @Composable
@@ -226,7 +231,8 @@ private fun SettingsModelsContent(
     actions: ModelActions,
 ) {
     var toDelete by rememberSaveable { mutableStateOf<String?>(null) }
-    val anyInstalled = installs.values.any { it is ModelInstall.Installed }
+    // La importación usa el elegido (MysoneApp elige otro instalado si falta), no uno cualquiera.
+    val selectedInstalled = installs[selectedId] is ModelInstall.Installed
 
     Scaffold(topBar = { BackTopBar(stringResource(R.string.title_settings_models), onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).verticalScroll(rememberScrollState())) {
@@ -265,10 +271,10 @@ private fun SettingsModelsContent(
             Note(stringResource(R.string.models_import_desc))
             Button(
                 onClick = actions.pickAudio,
-                enabled = anyInstalled,
+                enabled = selectedInstalled,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             ) { Text(stringResource(R.string.models_import_pick)) }
-            if (!anyInstalled) Note(stringResource(R.string.models_import_need_model))
+            if (!selectedInstalled) Note(stringResource(R.string.models_import_need_model))
             imports.forEach { ImportRow(it) }
             Spacer(Modifier.height(24.dp))
         }
@@ -277,12 +283,16 @@ private fun SettingsModelsContent(
     toDelete?.let { id ->
         val m = catalog.firstOrNull { it.id == id }
         val context = LocalContext.current
+        val size = Formatter.formatShortFileSize(context, m?.sizeBytes ?: 0)
+        // Borrar el elegido con otro instalado pasa a usar ese (MysoneApp); sin otro, la escucha se queda sin modelo.
+        val next = catalog.firstOrNull { it.id != id && installs[it.id] is ModelInstall.Installed }
         ConfirmDialog(
             title = stringResource(R.string.models_delete_title, m?.name.orEmpty()),
-            message = stringResource(
-                if (id == selectedId) R.string.models_delete_message_selected else R.string.models_delete_message,
-                Formatter.formatShortFileSize(context, m?.sizeBytes ?: 0),
-            ),
+            message = when {
+                id != selectedId -> stringResource(R.string.models_delete_message, size)
+                next != null -> stringResource(R.string.models_delete_message_switch, next.name, size)
+                else -> stringResource(R.string.models_delete_message_selected, size)
+            },
             confirmLabel = stringResource(R.string.action_delete),
             onConfirm = {
                 toDelete = null
@@ -444,7 +454,7 @@ private fun ImportRow(p: ImportProgress) {
                 p.error != null -> Text(p.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 p.done -> Text(
                     // Con la fecha del fichero puede quedar en otro día: se dice en cuál.
-                    p.startedAt?.let { stringResource(R.string.models_import_done_at, whereIs(it)) }
+                    p.startedAt?.let { stringResource(if (p.partial) R.string.models_import_partial_at else R.string.models_import_done_at, whereIs(it)) }
                         ?: stringResource(R.string.models_import_done),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.tertiary,

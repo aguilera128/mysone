@@ -3,10 +3,12 @@ package dev.javieraguilera.mysone.ai
 import dev.javieraguilera.mysone.data.ConvSource
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
+import dev.javieraguilera.mysone.data.DailyDigest
 import dev.javieraguilera.mysone.data.Segment
 import dev.javieraguilera.mysone.data.TaskState
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -144,10 +146,99 @@ class ProcessingTest {
         val b = ProcessOut(title = "Título", summary = "Segunda.", isNoise = true, tasks = listOf(TaskOut("T2")))
         val m = merge(listOf(a, b))
         assertEquals("Título", m.title)
-        assertEquals("Primera. Segunda.", m.summary)
+        assertEquals("Primera.", m.summary) // el resumen de la parte con ruido tampoco
         assertFalse(m.isNoise)
         assertEquals(listOf("T1"), m.tasks.map { it.text }) // lo de una parte con ruido no cuenta
         assertTrue(merge(listOf(b, b)).isNoise)
+    }
+
+    @Test fun `al fusionar muchas partes caben todas, por frases enteras`() {
+        val parts = (1..5).map { n ->
+            ProcessOut(
+                title = "T$n",
+                summary = "En la parte $n hablasteis del presupuesto de la obra con todo detalle. ".repeat(6).trim(),
+                keyPoints = listOf("p$n.1", "p$n.2", "p$n.3"),
+            )
+        }
+        val m = merge(parts)
+        assertTrue(m.summary.length <= MAX_SUMMARY)
+        (1..5).forEach { assertTrue("parte $it", "En la parte $it " in m.summary) }
+        assertTrue(m.summary.endsWith("detalle."))
+        assertEquals(m.summary, validate(m, start, madrid, emptyList()).summary) // validate ya no lo corta
+        // Puntos clave por turnos: los primeros de todas las partes antes que los segundos.
+        assertEquals(listOf("p1.1", "p2.1", "p3.1", "p4.1", "p5.1", "p1.2", "p2.2", "p3.2"), m.keyPoints)
+    }
+
+    @Test fun `recorte por frases`() {
+        assertEquals("Corto.", sentencesUpTo("Corto.", 50))
+        assertEquals("Una frase. Otra frase.", sentencesUpTo("Una frase. Otra frase. Y una tercera más larga.", 30))
+        // Una sola frase que no cabe: en una palabra y con puntos suspensivos.
+        assertEquals("Una frase muy…", sentencesUpTo("Una frase muy larga que no cabe", 16))
+    }
+
+    @Test fun `no vuelve a sugerir lo ya confirmado`() {
+        val out = ProcessOut(facts = listOf(FactOut("Lucía cumple años el 12 de abril"), FactOut("Ana es la contable")))
+        val p = validate(out, start, madrid, emptyList(), knownFacts = listOf("lucía cumple años el 12 de abril."))
+        assertEquals(listOf("Ana es la contable"), p.facts)
+    }
+
+    @Test fun `al pasar la medianoche la transcripción dice de qué día es lo que sigue`() {
+        val c = Conversation(id = 7, startedAt = ms(2026, 10, 15, 23, 50), endedAt = ms(2026, 10, 16, 0, 20), source = ConvSource.MIC, state = ConvState.PROCESSING)
+        val segs = listOf(
+            Segment(1, 7, ms(2026, 10, 15, 23, 55), 0, "Mañana a primera hora lo miro."),
+            Segment(2, 7, ms(2026, 10, 16, 0, 10), 0, "Recuérdame mañana a las diez llamar al taller."),
+            Segment(3, 7, ms(2026, 10, 16, 0, 12), 0, "Vale."),
+        )
+        val text = processInput(c, segs, emptyList(), 1, 1, madrid)
+        assertTrue(text.contains("[23:55:00] Mañana a primera hora lo miro.\n(día 2026-10-16)\n[00:10:00] Recuérdame"))
+        assertEquals(1, text.split("(día ").size - 1)
+        // Una parte que ya empieza al día siguiente lo dice desde la primera línea.
+        assertTrue(processInput(c, segs.drop(1), emptyList(), 2, 2, madrid).contains("<transcripcion>\n(día 2026-10-16)\n[00:10:00]"))
+    }
+
+    @Test fun `una respuesta cortada por max_tokens no se repite entera`() = runTest {
+        var calls = 0
+        val truncating = object : LlmClient {
+            override suspend fun complete(req: LlmRequest): LlmResponse {
+                calls++
+                throw LlmException(LlmErrorKind.BAD_OUTPUT, "max_tokens", truncated = true)
+            }
+        }
+        assertKind(LlmErrorKind.BAD_OUTPUT) { truncating.completeJson<DigestOut>(LlmRequest("s", emptyList(), "m", 10)) }
+        assertEquals(1, calls)
+
+        calls = 0
+        val badJson = object : LlmClient {
+            override suspend fun complete(req: LlmRequest): LlmResponse {
+                calls++
+                return LlmResponse("no es JSON", 0, 0, 0)
+            }
+        }
+        assertKind(LlmErrorKind.BAD_OUTPUT) { badJson.completeJson<DigestOut>(LlmRequest("s", emptyList(), "m", 10)) }
+        assertEquals(2, calls) // el formato sí se reintenta una vez
+    }
+
+    @Test fun `el resumen de un día se rehace si alguna conversación se procesó después`() {
+        fun conv(id: Long, processedAt: Long?, state: String = ConvState.DONE) = Conversation(
+            id = id, startedAt = start, endedAt = start + 60_000, source = ConvSource.MIC, state = state, processedAt = processedAt,
+        )
+        val digest = DailyDigest("2026-10-15", "Resumen", "[]", createdAt = 1_000)
+        assertTrue(digestOutdated(null, listOf(conv(1, 500))))
+        assertFalse(digestOutdated(digest, listOf(conv(1, 500), conv(2, 900))))
+        assertTrue(digestOutdated(digest, listOf(conv(1, 500), conv(2, 1_500)))) // importada o reprocesada después
+        assertFalse(digestOutdated(digest, listOf(conv(1, 500), conv(2, null, ConvState.READY))))
+    }
+
+    @Test fun `los fallos de un día se cuentan mientras el día no cambie`() {
+        val day = listOf(Conversation(id = 1, startedAt = start, endedAt = start, source = ConvSource.MIC, state = ConvState.DONE, processedAt = 700))
+        assertEquals(0, failures(null, day))
+        val once = failed(null, day)
+        assertEquals(1, failures(once, day))
+        assertEquals(3, failures(failed(failed(once, day), day), day))
+        // Otra conversación procesada ese día: empieza de cero.
+        val changed = day + day[0].copy(id = 2, processedAt = 900)
+        assertEquals(0, failures(once, changed))
+        assertEquals(0, failures("basura", day))
     }
 
     @Test fun `todos los esquemas son estrictos`() {
@@ -171,7 +262,7 @@ class ProcessingTest {
     }
 
     @Test fun `los prompts empiezan por su etiqueta y el de procesado es largo`() {
-        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v1\n"))
+        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v2\n"))
         assertTrue(Prompts.REMINDER.startsWith("mysone:recordatorio v1\n"))
         assertTrue(Prompts.PLAN.startsWith("mysone:planificar v1\n"))
         assertTrue(Prompts.ANSWER.startsWith("mysone:responder v1\n"))

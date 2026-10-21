@@ -100,10 +100,13 @@ internal inline fun <reified T> decodeOutput(text: String): T {
     }
 }
 
-/** Pide JSON y lo decodifica. Un fallo de formato se reintenta una vez (§7.3). */
+/**
+ * Pide JSON y lo decodifica. Un fallo de formato se reintenta una vez (§7.3); una respuesta cortada por el límite de
+ * tokens no, que [LlmClient.complete] ya la ha pedido con el doble y otra vez solo serían dos llamadas más a pagar.
+ */
 internal suspend inline fun <reified T> LlmClient.completeJson(req: LlmRequest): T = try {
     decodeOutput<T>(complete(req).text)
 } catch (e: LlmException) {
-    if (e.kind != LlmErrorKind.BAD_OUTPUT) throw e
+    if (e.kind != LlmErrorKind.BAD_OUTPUT || e.truncated) throw e
     decodeOutput<T>(complete(req).text)
 }

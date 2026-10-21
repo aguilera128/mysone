@@ -43,7 +43,9 @@ class ConversationProcessor(private val container: AppContainer) {
             registered += out.tasks.map { it.text }
             out
         }
-        val result = validate(merge(outs), c.startedAt, zone, kept)
+        // Los recuerdos ya confirmados (de esta conversación o de otra) no se vuelven a sugerir.
+        val confirmed = db.facts().listByState(FactState.CONFIRMED, Int.MAX_VALUE).map { it.text }
+        val result = validate(merge(outs), c.startedAt, zone, kept, confirmed)
 
         return save(c.id, segments) { current ->
             db.tasks().forConversation(c.id).filter { it.state == TaskState.SUGGESTED }.forEach { db.tasks().delete(it.id) }
@@ -120,7 +122,7 @@ internal fun processInput(c: Conversation, part: List<Segment>, registered: List
         if (total > 1) appendLine("parte: $index de $total")
         appendLine("</conversacion>")
         appendRegistered(registered)
-        appendTranscript(part, zone)
+        appendTranscript(part, zone, knownDay = c.startedAt)
     }
 
 internal fun StringBuilder.appendRegistered(texts: List<String>) {
@@ -129,9 +131,19 @@ internal fun StringBuilder.appendRegistered(texts: List<String>) {
     appendLine("</tareas_registradas>")
 }
 
-internal fun StringBuilder.appendTranscript(segments: List<Segment>, zone: ZoneId) {
+/**
+ * "[HH:mm:ss] texto" por segmento. Al pasar a otro día que el de [knownDay] (el que ya da el mensaje) o el de la
+ * línea anterior, una línea "(día yyyy-MM-dd)": sin ella, lo dicho después de medianoche parecería del día anterior.
+ */
+internal fun StringBuilder.appendTranscript(segments: List<Segment>, zone: ZoneId, knownDay: Long? = segments.firstOrNull()?.startedAt) {
     appendLine("<transcripcion>")
-    segments.forEach { appendLine("[${Time.hourMinuteSecond(it.startedAt, zone)}] ${it.text.trim()}") }
+    var day = knownDay?.let { Time.dayKey(it, zone) }
+    segments.forEach {
+        val d = Time.dayKey(it.startedAt, zone)
+        if (d != day) appendLine("(día $d)")
+        day = d
+        appendLine("[${Time.hourMinuteSecond(it.startedAt, zone)}] ${it.text.trim()}")
+    }
     append("</transcripcion>")
 }
 
@@ -151,30 +163,69 @@ internal fun splitTranscript(segments: List<Segment>, maxChars: Int = MAX_PART_C
     return parts
 }
 
-/** Fusiona las salidas de las partes de una conversación larga. */
+internal const val MAX_SUMMARY = 1200
+internal const val MAX_KEY_POINTS = 8
+
+/**
+ * Fusiona las salidas de las partes de una conversación larga. El resumen junta los de las partes útiles (sin los de
+ * ruido) recortados por frases a su parte de [MAX_SUMMARY], para que quepan todas; los puntos clave se toman por
+ * turnos, uno de cada parte.
+ */
 internal fun merge(outs: List<ProcessOut>): ProcessOut {
     if (outs.size == 1) return outs[0]
     val useful = outs.filterNot { it.isNoise }
+    val summaries = useful.ifEmpty { outs }.map { it.summary.trim() }.filter { it.isNotEmpty() }
+    val budget = (MAX_SUMMARY - (summaries.size - 1)) / summaries.size.coerceAtLeast(1)
     return ProcessOut(
         title = (useful + outs).firstOrNull { it.title.isNotBlank() }?.title.orEmpty(),
-        summary = outs.joinToString(" ") { it.summary.trim() }.trim(),
-        keyPoints = useful.flatMap { it.keyPoints },
+        summary = summaries.joinToString(" ") { sentencesUpTo(it, budget) },
+        keyPoints = roundRobin(useful.map { it.keyPoints }).take(MAX_KEY_POINTS),
         isNoise = useful.isEmpty(),
         tasks = useful.flatMap { it.tasks },
         facts = useful.flatMap { it.facts },
     )
 }
 
-/** Recorta textos, descarta fechas inválidas y duplicados, y aplica las reglas de ruido y de facts. */
-internal fun validate(out: ProcessOut, startedAt: Long, zone: ZoneId, registered: List<String>): Processed {
+private val SENTENCE_END = Regex("(?<=[.!?…])\\s+")
+
+/** Las frases enteras de [text] que caben en [max]; si ni la primera cabe, cortada en una palabra y con "…". */
+internal fun sentencesUpTo(text: String, max: Int): String {
+    if (text.length <= max) return text
+    val out = StringBuilder()
+    for (sentence in text.split(SENTENCE_END)) {
+        if (out.length + sentence.length + (if (out.isEmpty()) 0 else 1) > max) break
+        if (out.isNotEmpty()) out.append(' ')
+        out.append(sentence)
+    }
+    if (out.isNotEmpty()) return out.toString()
+    val cut = text.take(max - 1)
+    return cut.substring(0, cut.lastIndexOf(' ').takeIf { it > 0 } ?: cut.length).trimEnd() + "…"
+}
+
+/** El primero de cada lista, después el segundo de cada una… */
+private fun <T> roundRobin(lists: List<List<T>>): List<T> =
+    (0 until (lists.maxOfOrNull { it.size } ?: 0)).flatMap { i -> lists.mapNotNull { it.getOrNull(i) } }
+
+/**
+ * Recorta textos, descarta fechas inválidas y duplicados, y aplica las reglas de ruido y de facts. Ni tareas de
+ * [registered] ni facts de [knownFacts] (los ya confirmados), aunque cambien mayúsculas o signos.
+ */
+internal fun validate(
+    out: ProcessOut,
+    startedAt: Long,
+    zone: ZoneId,
+    registered: List<String>,
+    knownFacts: List<String> = emptyList(),
+): Processed {
     val noise = out.isNoise
+    val seenFacts = knownFacts.mapTo(mutableSetOf(), ::normalized)
     return Processed(
         title = out.title.clean(60),
-        summary = out.summary.clean(1200),
-        keyPoints = out.keyPoints.mapNotNull { it.clean(200) }.take(8),
+        summary = out.summary.clean(MAX_SUMMARY),
+        keyPoints = out.keyPoints.mapNotNull { it.clean(200) }.take(MAX_KEY_POINTS),
         isNoise = noise,
         tasks = if (noise) emptyList() else validTasks(out.tasks, startedAt, zone, registered),
-        facts = if (noise) emptyList() else out.facts.mapNotNull { it.text.clean(300) }.distinctBy { it.lowercase() }.take(3),
+        facts = if (noise) emptyList() else out.facts.mapNotNull { it.text.clean(300) }.filter { seenFacts.add(normalized(it)) }.take(3),
     )
 }
 

@@ -28,7 +28,7 @@ class OpenAiCompatClient(
     /** `finish_reason: length` → un reintento con el doble. */
     override suspend fun complete(req: LlmRequest): LlmResponse =
         send(req, req.maxTokens) ?: send(req, req.maxTokens * 2)
-            ?: throw LlmException(LlmErrorKind.BAD_OUTPUT, "length")
+            ?: throw LlmException(LlmErrorKind.BAD_OUTPUT, "length", truncated = true)
 
     private suspend fun send(req: LlmRequest, maxTokens: Int): LlmResponse? = withRetries {
         val reply = http.postJson(url, mapOf("Authorization" to "Bearer $apiKey"), openAiBody(req, maxTokens, jsonMode, deepSeek))

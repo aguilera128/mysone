@@ -24,7 +24,7 @@ class AnthropicClient(
     /** `stop_reason: max_tokens` → un reintento con el doble. */
     override suspend fun complete(req: LlmRequest): LlmResponse =
         send(req, req.maxTokens) ?: send(req, req.maxTokens * 2)
-            ?: throw LlmException(LlmErrorKind.BAD_OUTPUT, "max_tokens")
+            ?: throw LlmException(LlmErrorKind.BAD_OUTPUT, "max_tokens", truncated = true)
 
     private suspend fun send(req: LlmRequest, maxTokens: Int): LlmResponse? = withRetries {
         val fallbacks = req.model in FALLBACK_MODELS && !fallbacksRejected

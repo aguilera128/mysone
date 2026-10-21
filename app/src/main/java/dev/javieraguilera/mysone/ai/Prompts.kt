@@ -9,7 +9,7 @@ package dev.javieraguilera.mysone.ai
 object Prompts {
     /** Procesado de una conversación (§7.3). Largo a propósito: ≥ 512 tokens para que cachee. */
     val PROCESS = """
-        mysone:procesar v1
+        mysone:procesar v2
 
         Eres el motor de notas de Mysone, una app personal que escucha en segundo plano y transcribe en el propio móvil lo que oye su dueño. Recibes la transcripción automática de UNA conversación y devuelves un único objeto JSON con su título, su resumen, sus puntos clave, las tareas que han salido y, como mucho, tres datos duraderos que convenga recordar.
 
@@ -17,7 +17,7 @@ object Prompts {
         El mensaje trae tres bloques:
         - <conversacion>: inicio (día de la semana, fecha y hora local, y entre paréntesis la misma fecha como yyyy-MM-ddTHH:mm), zona horaria, duración y, si la conversación es larga, qué parte es ("parte 2 de 3").
         - <tareas_registradas>: tareas que ya están apuntadas de esta conversación. No las repitas aunque vuelvan a salir.
-        - <transcripcion>: una línea por fragmento, "[HH:mm:ss] texto", con la hora local en que se dijo.
+        - <transcripcion>: una línea por fragmento, "[HH:mm:ss] texto", con la hora local en que se dijo. Si la conversación pasa a otro día (por ejemplo, después de medianoche), una línea "(día yyyy-MM-dd)" indica que lo que sigue es de ese día.
         La transcripción es automática: tiene errores de reconocimiento, frases cortadas y voces de varias personas sin identificar. No sabes quién dice cada frase; el dueño es quien lleva el móvil y suele hablar en primera persona. Interpreta los errores evidentes por el contexto, pero no inventes lo que no se oye.
 
         # Salida
@@ -40,10 +40,10 @@ object Prompts {
         - Si es ruido (isNoise true), no hay tareas ni datos.
 
         # Fechas
-        - Resuelve las fechas relativas ("mañana", "el jueves", "dentro de dos horas", "esta tarde", "el mes que viene") respecto a la fecha y hora de INICIO de la conversación, no respecto a hoy.
+        - Resuelve las fechas relativas ("mañana", "el jueves", "dentro de dos horas", "esta tarde", "el mes que viene") respecto al momento en que se dijo esa frase: la hora de su línea en el día que corresponde (el del inicio o el de la última línea "(día …)" anterior). Nunca respecto a hoy. Si no se sabe en qué línea se dijo, respecto al inicio de la conversación.
         - Formato estricto yyyy-MM-ddTHH:mm, hora local, sin segundos ni zona. Ejemplo: 2026-03-05T17:30.
         - Si se dice el día pero no la hora, usa las 09:00. Por la mañana = 09:00, a mediodía = 14:00, por la tarde = 17:00, por la noche = 21:00.
-        - Una hora sin más ("a las 6") es la siguiente que tenga sentido tras el inicio de la conversación: si a las 16:00 se dice "a las 6", son las 18:00 de ese día.
+        - Una hora sin más ("a las 6") es la siguiente que tenga sentido tras el momento en que se dijo: si a las 16:00 se dice "a las 6", son las 18:00 de ese día.
         - Con explicitReminder true, remindAt es el momento pedido para el aviso; si solo se dijo el día, ese día a las 09:00; si no se dijo cuándo, null.
         - Si no se puede saber la fecha con seguridad, null. Nunca inventes fechas.
 

@@ -57,13 +57,18 @@ enum class LlmErrorKind(@StringRes val messageRes: Int) {
 
 private val RETRYABLE = setOf(LlmErrorKind.RATE, LlmErrorKind.NETWORK, LlmErrorKind.SERVER)
 
-/** [message] es corto y técnico (código HTTP, tipo de error): nunca lleva contenido. Para la UI, [LlmErrorKind.messageRes]. */
+/**
+ * [message] es corto y técnico (código HTTP, tipo de error): nunca lleva contenido. Para la UI, [LlmErrorKind.messageRes].
+ * [truncated]: BAD_OUTPUT porque la respuesta se cortó por el límite de tokens también con el doble; repetir la misma
+ * petición volvería a cortarse.
+ */
 class LlmException(
     val kind: LlmErrorKind,
     message: String,
     val retryAfterMs: Long? = null,
     val retryable: Boolean = kind in RETRYABLE,
     val httpCode: Int? = null,
+    val truncated: Boolean = false,
 ) : Exception(message)
 
 /**

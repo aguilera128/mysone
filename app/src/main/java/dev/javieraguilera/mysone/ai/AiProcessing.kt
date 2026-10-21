@@ -128,7 +128,8 @@ class AiProcessing(private val container: AppContainer) {
                 id,
                 state = if (counts) ConvState.FAILED else ConvState.READY,
                 addAttempts = if (counts) 1 else 0,
-                lastError = "${container.app.getString(e.kind.messageRes)} (${e.message})", // se muestra tal cual en Conversación
+                // Se muestra tal cual en Conversación: solo el texto en español, sin el detalle técnico (§2).
+                lastError = container.app.getString(e.kind.messageRes),
             )
             Result.failure(e)
         } catch (e: Exception) {

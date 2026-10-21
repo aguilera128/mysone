@@ -44,6 +44,13 @@ class TodayViewModel(private val container: AppContainer, initialDay: String?) :
     val selectedDay: StateFlow<String> = combine(chosenDay, todayFlow()) { chosen, today -> chosen ?: today }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), initialDay ?: Time.today())
 
+    // Lo que pinta la tarjeta y la línea de tiempo se sigue también sin la pantalla a la vista: con WhileSubscribed, al
+    // volver se veía un momento lo de la última vez (p. ej. «Todavía no hay conversaciones hoy» con una importada
+    // entretanto) hasta releer la BD.
+    // ponytail: consultas pequeñas en cada cambio de la BD mientras vive el ViewModel, también en segundo plano; si
+    // pesa, volver a WhileSubscribed y no afirmar nada con lo guardado hasta la primera lectura.
+    private val started = SharingStarted.Eagerly
+
     /** null mientras carga el día. */
     val ui: StateFlow<TodayUi?> = selectedDay.flatMapLatest { day ->
         val (from, to) = Time.dayBounds(day)
@@ -62,14 +69,14 @@ class TodayViewModel(private val container: AppContainer, initialDay: String?) :
                 },
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    }.stateIn(viewModelScope, started, null)
 
     val pendingChunks: StateFlow<Int> = db.pendingAudio().count()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+        .stateIn(viewModelScope, started, 0)
 
     /** Intención del usuario: si es true y la escucha está apagada, es que algo la paró. */
     val listeningEnabled: StateFlow<Boolean> = container.settings.data.map { it.listeningEnabled }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        .stateIn(viewModelScope, started, false)
 
     fun selectDay(day: String) {
         chosenDay.value = day.takeIf { it != Time.today() }

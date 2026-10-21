@@ -63,11 +63,11 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,7 +92,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.capture.ListeningController
@@ -116,6 +119,7 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Días que ofrece la tira de arriba (hoy incluido); los anteriores, con el calendario. */
@@ -174,6 +178,7 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
                     vm.forget(minutes)
                     scope.launch { snackbar.showSnackbar(resources.getString(R.string.today_forget_done, minutes)) }
                 },
+                queue = queue,
             )
         },
     )
@@ -315,6 +320,7 @@ internal fun StatusCard(
     onResume: () -> Unit,
     onOpenModels: () -> Unit,
     onForget: (Int) -> Unit,
+    queue: QueueStatus = QueueStatus.Running,
 ) {
     val c = MaterialTheme.colorScheme
     val look = when (status) {
@@ -381,8 +387,14 @@ internal fun StatusCard(
             }
             if (status == ListeningStatus.Starting) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (pendingChunks > 0) {
+                // A qué espera, como en la notificación: al detener, la notificación se va y solo queda esto.
+                val why = when (queue) {
+                    QueueStatus.Running -> null
+                    is QueueStatus.Held -> stringResource(queue.reason)
+                    QueueStatus.Stopped -> stringResource(R.string.today_pending_stopped)
+                }
                 Text(
-                    pluralStringResource(R.plurals.today_pending, pendingChunks, pendingChunks),
+                    joined(pluralStringResource(R.plurals.today_pending, pendingChunks, pendingChunks), why),
                     style = MaterialTheme.typography.labelMedium,
                     color = c.onSurfaceVariant,
                 )
@@ -463,12 +475,21 @@ private fun ForgetButton(onForget: (Int) -> Unit) {
 private fun LevelMeter(level: Float) {
     val bars = 16
     val history = remember { mutableStateListOf<Float>().apply { repeat(bars) { add(0f) } } }
-    var smoothed by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(level) {
-        // El nivel ya llega en escala de -60 a 0 dBFS (AudioCapture.level).
-        smoothed = smoothed * 0.6f + level.coerceIn(0f, 1f) * 0.4f
-        history.removeAt(0)
-        history.add(smoothed)
+    val current by rememberUpdatedState(level)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // A ritmo fijo y no cuando cambia el nivel: en silencio llega 0 una y otra vez, el estado no cambia y las barras
+    // se quedarían con la última frase. Solo con la pantalla a la vista.
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            var smoothed = 0f
+            while (true) {
+                // El nivel ya llega en escala de -60 a 0 dBFS (AudioCapture.level).
+                smoothed = smoothed * 0.6f + current.coerceIn(0f, 1f) * 0.4f
+                history.removeAt(0)
+                history.add(smoothed)
+                delay(250)
+            }
+        }
     }
     val color = MaterialTheme.colorScheme.tertiary
     val description = stringResource(R.string.today_level_meter)

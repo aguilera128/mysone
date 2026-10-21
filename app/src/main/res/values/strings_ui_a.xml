@@ -77,6 +77,7 @@
         <item quantity="one">%d fragmento por transcribir</item>
         <item quantity="other">%d fragmentos por transcribir</item>
     </plurals>
+    <string name="today_pending_stopped">Se transcribirán al volver a escuchar; si pasan 24 h, se borran</string>
     <string name="today_other_day">Otro día</string>
     <string name="today_digest_title">Resumen del día</string>
     <string name="today_timeline_title">Conversaciones</string>

@@ -472,6 +472,10 @@ interface LlmClient { suspend fun complete(req: LlmRequest): LlmResponse } // la
   textos recortados. Un fallo de formato reintenta una vez; luego `FAILED` con `lastError`.
 - Estados: `READY → PROCESSING → DONE | FAILED`. `FAILED` se reintenta en `processPending()` hasta 3
   veces (`processAttempts`).
+- Apagar la IA para los envíos siguientes (los ajustes se leen justo antes de cada llamada), no el que ya está en
+  camino: su respuesta se guarda con sus tareas y alarmas, igual que la de Preguntar. El texto ya ha salido y la
+  llamada está pagada; descartarla dejaría la conversación en `READY` y se volvería a enviar al reactivar la IA. Lo
+  que sí se descarta es lo que llega después de olvidar o borrar (lo comprueba la transacción que lo guarda).
 
 ### 7.4 Recordatorio rápido (`QuickReminders`)
 Si `quickReminders` y el segmento coincide con

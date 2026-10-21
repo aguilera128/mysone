@@ -70,6 +70,8 @@ class ConversationProcessor(private val container: AppContainer) {
      * Escribe el resultado en una transacción, y solo si la conversación sigue en PROCESSING con los segmentos
      * que se enviaron. "Olvidar", borrar y "Borrar todo" escriben en otra: o terminan antes y aquí se descarta, o
      * después y se llevan también esto. Si solo han cambiado los segmentos, vuelve a READY para reprocesarla.
+     * Apagar la IA no lo descarta, a propósito (§7.3): el texto ya ha salido y la respuesta está pagada. Tirarla la
+     * dejaría en READY y, al volver a activarla, se enviaría otra vez.
      */
     private suspend fun save(id: Long, sent: List<Segment>, write: suspend (Conversation) -> Unit): Boolean {
         val db = container.db

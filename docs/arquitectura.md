@@ -317,7 +317,11 @@ class AppContainer(val app: Application) {
 - Intent nulo (reinicio sticky): si `listeningEnabled`, intentar reanudar; si el micro no abre,
   `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido.
 - Comprobaciones antes de capturar: permiso `RECORD_AUDIO` (si no: `NeedsPermission`), modelo
-  instalado (si no: `NeedsModel`, no se graba), `transcriber.acquire()`.
+  instalado (si no: `NeedsModel`, no se graba), `transcriber.acquire()`. Borrar el último modelo con la escucha en
+  marcha o en pausa la para igual (`NeedsModel`, se suelta el micro). `NeedsModel` pasa a `Off` en cuanto hay un
+  modelo instalado (`ListeningController.leaveNeedsModelOnInstall`).
+- Huecos: como mucho uno abierto; uno de menos de 10 s no se guarda. Al quedar detenida sin modelo o sin permiso, el
+  que siga abierto (la pausa al reanudar, un `KILLED`) pasa a `STOPPED`.
 - **Pausar no llama a `stopForeground()`**: se libera `AudioRecord` (se apaga el indicador del micro)
   y el servicio sigue en primer plano con la notificación "En pausa hasta HH:MM". La reanudación la
   dispara una alarma exacta (`setExactAndAllowWhileIdle`) con `PendingIntent.getService(RESUME)`.

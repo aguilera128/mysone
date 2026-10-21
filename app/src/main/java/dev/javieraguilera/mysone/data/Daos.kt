@@ -342,6 +342,9 @@ interface GapDao {
     @Query("UPDATE listening_gap SET endedAt = :endedAt WHERE id = :id")
     suspend fun setEnded(id: Long, endedAt: Long)
 
+    @Query("DELETE FROM listening_gap WHERE id = :id")
+    suspend fun delete(id: Long)
+
     @Query("SELECT * FROM listening_gap WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
     suspend fun findOpen(): ListeningGap?
 

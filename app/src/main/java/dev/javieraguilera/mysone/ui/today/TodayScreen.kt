@@ -248,7 +248,7 @@ internal fun TodayContent(
                     items(ui.items, key = { it.key }) { item ->
                         when (item) {
                             is TimelineItem.Conv -> ConversationRow(item, queue, onClick = { onOpenConversation(item.conversation.id) })
-                            is TimelineItem.Gap -> GapRow(item.gap)
+                            is TimelineItem.Gap -> GapRow(item.gap, ui.day)
                         }
                     }
                     item(key = "end") { Spacer(Modifier.height(24.dp)) }
@@ -636,13 +636,25 @@ private fun Count(icon: ImageVector, text: String, tint: Color) {
     }
 }
 
+/** [day]: el que se está viendo. */
 @Composable
-private fun GapRow(gap: ListeningGap) {
+private fun GapRow(gap: ListeningGap, day: String) {
+    val dayStart = Time.dayBounds(day).first
+    val end = gap.endedAt
+    val range = when {
+        // Abierto desde otro día (detenida por la tarde, vista pasada la medianoche): a las 00:00 y con su fecha, no
+        // con una hora de hoy que aún no ha llegado.
+        gap.startedAt < dayStart ->
+            if (end == null) stringResource(R.string.ui_since_day, dayTime(gap.startedAt))
+            else stringResource(R.string.ui_time_range, dayTime(gap.startedAt), Time.hourMinute(end))
+        end != null && end - gap.startedAt < 60_000 -> durationLabel(end - gap.startedAt) // y no «17:38–17:38»
+        else -> timeRange(gap.startedAt, end)
+    }
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp)) {
-        TimeMargin(Time.hourMinute(gap.startedAt))
+        TimeMargin(Time.hourMinute(maxOf(gap.startedAt, dayStart)))
         Rule(dashed = true, node = null)
         Text(
-            joined(gapLabel(gap.reason), timeRange(gap.startedAt, gap.endedAt)),
+            joined(gapLabel(gap.reason), range),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f).padding(start = 4.dp, top = 14.dp, bottom = 14.dp),

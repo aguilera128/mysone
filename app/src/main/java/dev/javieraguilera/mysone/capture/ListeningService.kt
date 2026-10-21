@@ -19,6 +19,7 @@ import androidx.core.content.edit
 import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.asr.TranscriberState
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_PAUSE
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_RESUME
@@ -35,7 +36,7 @@ import dev.javieraguilera.mysone.capture.ListeningStatus.Paused
 import dev.javieraguilera.mysone.capture.ListeningStatus.Starting
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
-import dev.javieraguilera.mysone.data.AppDatabase
+import dev.javieraguilera.mysone.data.GapDao
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.GapReason
 import dev.javieraguilera.mysone.data.ListeningGap
@@ -57,7 +58,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -128,6 +133,13 @@ class ListeningService : Service() {
                 refreshNotification()
                 delay(NOTIFY_EVERY_MS)
             }
+        }
+        // Borrado el último modelo con la escucha en marcha o en pausa: como al empezar sin él, no se graba (§5.1).
+        // El reconocedor sigue en memoria y transcribiría, pero el usuario ha borrado el modelo y el micro seguiría abierto.
+        scope.launch {
+            c.models.installs.map { m -> m.values.any { it is ModelInstall.Installed } }.distinctUntilChanged().drop(1)
+                .filter { !it }
+                .collect { command(lastStartId) { if (active) giveUp(NeedsModel) } }
         }
     }
 
@@ -335,9 +347,13 @@ class ListeningService : Service() {
      * puede arreglar. Si no (falta modelo o permiso, el modelo no carga), hace falta la app: deja de insistir.
      */
     private suspend fun giveUp(status: ListeningStatus, retry: Boolean = false) {
+        val listening = capture != null
         clearPause()
         stopCapture()
         endSession(if (status is Error) GapReason.ERROR else null)
+        // Sin modelo o sin permiso queda detenida: si escuchaba, o seguía abierto un hueco (la pausa al reanudar sin
+        // modelo, un KILLED), desde ahora es "Escucha detenida". Si no, la pausa contaba como pausa hasta volver a escuchar.
+        if (status !is Error) book.withLock { if (listening || db.gaps().findOpen() != null) openGapLocked(GapReason.STOPPED) }
         if (!retry) c.settings.update { it.copy(listeningEnabled = false) }
         ListeningController.publish(status)
         if (retry) ResumeNotifier.show(this)
@@ -513,12 +529,12 @@ class ListeningService : Service() {
 
     // ---- Huecos (con [book]). Como mucho uno abierto: abrir otro cierra el anterior. ----
 
-    private suspend fun openGapLocked(reason: String, at: Long = now()) = openGap(db, reason, at)
+    private suspend fun openGapLocked(reason: String, at: Long = now()) = openGap(db.gaps(), reason, at)
 
     /** Sin [reason] cierra el que haya; con él, solo si es de ese motivo. */
     private suspend fun closeGapLocked(reason: String? = null) {
         val open = db.gaps().findOpen() ?: return
-        if (reason == null || open.reason == reason) db.gaps().setEnded(open.id, now())
+        if (reason == null || open.reason == reason) closeGap(db.gaps(), open, now())
     }
 
     // ---- Estado y notificación ----
@@ -614,7 +630,7 @@ class ListeningService : Service() {
             // Hay latido sin "detener" ni pausa: el servicio murió escuchando.
             val alive = prefs.getLong(KEY_ALIVE, 0)
             if (alive > 0) {
-                openGap(c.db, GapReason.KILLED, alive)
+                openGap(c.db.gaps(), GapReason.KILLED, alive)
                 prefs.edit { remove(KEY_ALIVE) }
             }
             ConversationTracker(c.db.conversations(), { 0L }) { finishConversation(c, it) }.recoverOrphans()
@@ -683,10 +699,20 @@ private suspend fun finishConversation(c: AppContainer, id: Long) {
 }
 
 /** Como mucho un hueco abierto: abrir otro cierra el anterior. */
-private suspend fun openGap(db: AppDatabase, reason: String, at: Long) {
-    val open = db.gaps().findOpen()
+internal suspend fun openGap(gaps: GapDao, reason: String, at: Long) {
+    val open = gaps.findOpen()
     if (open?.reason == reason) return
     // El latido puede ser anterior al inicio del hueco abierto (KILLED justo tras un MIC_BUSY).
-    if (open != null) db.gaps().setEnded(open.id, maxOf(at, open.startedAt))
-    db.gaps().insert(ListeningGap(startedAt = at, reason = reason))
+    if (open != null) closeGap(gaps, open, maxOf(at, open.startedAt))
+    gaps.insert(ListeningGap(startedAt = at, reason = reason))
 }
+
+/**
+ * Uno de menos de [MIN_GAP_MS] no se guarda: detener y volver a escuchar enseguida, o un reinicio del sistema de unos
+ * segundos, llenaban Hoy de filas «17:38–17:38» que tapaban las conversaciones, y en ese rato apenas se pierde nada.
+ */
+internal suspend fun closeGap(gaps: GapDao, gap: ListeningGap, at: Long) {
+    if (at - gap.startedAt < MIN_GAP_MS) gaps.delete(gap.id) else gaps.setEnded(gap.id, at)
+}
+
+internal const val MIN_GAP_MS = 10_000L

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.StrictMode
 import dev.javieraguilera.mysone.ai.ProcessWorker
 import dev.javieraguilera.mysone.asr.fallbackModelId
+import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.tasks.MaintenanceWorker
 import io.sentry.android.core.SentryAndroid
 import kotlinx.coroutines.flow.combine
@@ -39,6 +40,7 @@ class MysoneApp : Application() {
                 .filterNotNull()
                 .collect { container.settings.update { s -> fallbackModelId(models.installs.value, s.asrModelId)?.let { s.copy(asrModelId = it) } ?: s } }
         }
+        container.appScope.launch { ListeningController.leaveNeedsModelOnInstall(container.models.installs) }
     }
 
     /** Solo con DSN en la compilación. Ni PII, ni breadcrumbs, ni adjuntos, ni textos de error: solo tipo y pila. */

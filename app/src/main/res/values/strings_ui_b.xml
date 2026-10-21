@@ -185,7 +185,7 @@
     <string name="models_test_failed">La prueba ha fallado. Vuelve a descargar el modelo o prueba con el otro.</string>
     <string name="models_delete_title">¿Borrar %1$s?</string>
     <string name="models_delete_message">Para volver a usarlo tendrás que descargarlo otra vez (%1$s).</string>
-    <string name="models_delete_message_selected">Es el modelo que usas: hasta que descargues uno, la escucha no podrá transcribir. Para recuperarlo hay que descargarlo otra vez (%1$s).</string>
+    <string name="models_delete_message_selected">Es el modelo que usas: la escucha se detendrá hasta que descargues uno. Para recuperarlo hay que descargarlo otra vez (%1$s).</string>
     <string name="models_delete_message_switch">Es el modelo que usas: a partir de ahora la escucha y la importación usarán %1$s. Para recuperarlo hay que descargarlo otra vez (%2$s).</string>
     <string name="models_section_import">Importar audio</string>
     <string name="models_import_desc">Transcribe un archivo de audio (una grabación o una nota de voz) y lo guarda como una conversación. Todo se hace en el móvil.</string>

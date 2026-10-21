@@ -6,9 +6,12 @@ import android.util.Log
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.asr.ModelInstall
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 
 sealed interface ListeningStatus {
     data object Off : ListeningStatus
@@ -59,6 +62,16 @@ object ListeningController {
     /** Lo usa el servicio para publicar su estado. */
     internal fun publish(s: ListeningStatus) {
         _status.value = s
+    }
+
+    /**
+     * "Falta el modelo" deja de ser verdad en cuanto hay uno instalado (el elegido, o el que MysoneApp elige en su
+     * lugar): la escucha queda detenida y "Escuchar" vuelve a funcionar. Nadie más lo quita, y sin esto la tarjeta de
+     * Hoy se quedaba así hasta un proceso nuevo. Lo sigue MysoneApp mientras vive el proceso.
+     */
+    internal suspend fun leaveNeedsModelOnInstall(installs: Flow<Map<String, ModelInstall>>) {
+        combine(status, installs) { s, m -> s == ListeningStatus.NeedsModel && m.values.any { it is ModelInstall.Installed } }
+            .collect { if (it) _status.compareAndSet(ListeningStatus.NeedsModel, ListeningStatus.Off) }
     }
 
     private val _queue = MutableStateFlow<QueueStatus>(QueueStatus.Stopped)

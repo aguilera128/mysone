@@ -10,6 +10,7 @@
     <string name="ui_duration_h_min">%1$d h %2$d min</string>
     <string name="ui_time_range">%1$s–%2$s</string>
     <string name="ui_since">desde las %1$s</string>
+    <string name="ui_since_day">desde el %1$s</string>
     <string name="ui_join">%1$s · %2$s</string>
     <string name="ui_day_time">%1$s, %2$s</string>
 

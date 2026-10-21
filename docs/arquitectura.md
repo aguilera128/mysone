@@ -512,8 +512,8 @@ Material 3, Compose, tema propio (sin color dinámico) con modo claro y oscuro; 
 | background | `#F7F5F0` | `#111315` |
 | surface / surfaceContainer | `#FFFFFF` / `#EFEBE4` | `#191C1F` / `#22262A` |
 | primary (tinta) | `#2E4A7A` | `#A9C1F0` |
-| secondary (ámbar, recordatorios) | `#B5701F` | `#F0B366` |
-| tertiary (salvia, "escuchando") | `#3E7F6A` | `#86C9AF` |
+| secondary (ámbar, recordatorios) | `#965A12` | `#F0B366` |
+| tertiary (salvia, "escuchando") | `#36725F` | `#86C9AF` |
 | error | `#B3261E` | `#F2B8B5` |
 
 Navegación inferior: **Hoy · Preguntar · Tareas · Memoria**. En la barra superior de Hoy: buscar y

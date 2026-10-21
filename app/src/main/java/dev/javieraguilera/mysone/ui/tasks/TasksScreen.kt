@@ -90,6 +90,7 @@ import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
 import dev.javieraguilera.mysone.tasks.ReminderReceiver
 import dev.javieraguilera.mysone.ui.components.EmptyState
+import dev.javieraguilera.mysone.ui.components.jsonSaver
 import dev.javieraguilera.mysone.ui.settings.Note
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
@@ -147,7 +148,8 @@ private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, ac
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val listStates = List(TABS.size) { rememberLazyListState() }
     var highlight by remember { mutableStateOf(highlightTaskId) }
-    var editing by remember { mutableStateOf<TaskItem?>(null) }
+    // La tarea tal como estaba al abrir el diálogo: TasksViewModel.edit la usa para no pisar lo cambiado mientras.
+    var editing by rememberSaveable(saver = jsonSaver<TaskItem>()) { mutableStateOf(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

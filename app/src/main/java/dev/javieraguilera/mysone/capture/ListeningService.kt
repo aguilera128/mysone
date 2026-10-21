@@ -201,6 +201,7 @@ class ListeningService : Service() {
             if (release) c.transcriber.release()
         }
         scope.cancel()
+        ListeningController.publishQueue(QueueStatus.Stopped)
         val s = ListeningController.status.value
         if (s is Listening || s is MicBusy || s is Paused || s is Starting) ListeningController.publish(Off)
         super.onDestroy()
@@ -371,6 +372,8 @@ class ListeningService : Service() {
                 book.withLock { guarded("Temporizador") { if (capture?.speaking != true) tracker.closeIfIdle(now()) } }
             }
         }
+        hold = 0 // el de una sesión anterior: si sigue, transcribeLoop lo vuelve a publicar
+        ListeningController.publishQueue(QueueStatus.Running)
         asrJob = s.launch(asr) { transcribeLoop(wake) }
         session = job
         chunks = ch
@@ -403,6 +406,7 @@ class ListeningService : Service() {
         if (acquired) c.transcriber.release()
         acquired = false
         draining = false
+        ListeningController.publishQueue(QueueStatus.Stopped)
         session = null
         chunks = null
         queueJob = null
@@ -485,6 +489,7 @@ class ListeningService : Service() {
             val reason = holdReason()
             if (reason != hold) {
                 hold = reason
+                ListeningController.publishQueue(if (reason == 0) QueueStatus.Running else QueueStatus.Held(reason))
                 refreshNotification()
             }
             if (reason == 0) return true

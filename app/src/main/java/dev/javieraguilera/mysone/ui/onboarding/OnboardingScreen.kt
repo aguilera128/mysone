@@ -62,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.AsrModel
@@ -77,7 +78,7 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 fun OnboardingScreen(onFinished: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
-    val vm = viewModel { OnboardingViewModel(container) }
+    val vm = viewModel { OnboardingViewModel(container, createSavedStateHandle()) }
     val installs by vm.models.installs.collectAsStateWithLifecycle()
     val legalAcceptedAt by vm.legalAcceptedAt.collectAsStateWithLifecycle()
     val mic = rememberPermissionState(Manifest.permission.RECORD_AUDIO)

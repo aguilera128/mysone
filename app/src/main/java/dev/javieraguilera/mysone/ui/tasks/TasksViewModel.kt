@@ -25,15 +25,20 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
     private fun observe(state: String) =
         dao.observeByState(state).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun accept(t: TaskItem) = save(t.copy(state = TaskState.OPEN))
+    fun accept(t: TaskItem) = save(t.id) { it.copy(state = TaskState.OPEN) }
 
-    fun dismiss(t: TaskItem) = save(t.copy(state = TaskState.DISMISSED))
+    fun dismiss(t: TaskItem) = save(t.id) { it.copy(state = TaskState.DISMISSED) }
 
-    fun setDone(t: TaskItem, done: Boolean) = save(t.copy(state = if (done) TaskState.DONE else TaskState.OPEN))
+    fun setDone(t: TaskItem, done: Boolean) = save(t.id) { it.copy(state = if (done) TaskState.DONE else TaskState.OPEN) }
 
-    fun edit(t: TaskItem, text: String, remindAt: Long?) = save(
-        t.copy(text = text.trim(), remindAt = remindAt, notifiedAt = if (remindAt == t.remindAt) t.notifiedAt else null),
-    )
+    /**
+     * [t] es la tarea al abrir el diálogo. Si no se ha tocado el aviso, vale el de ahora: un "Posponer 1 h" desde la
+     * notificación mientras se editaba no se pierde (ni un "Hecho", que [save] parte de la fila actual).
+     */
+    fun edit(t: TaskItem, text: String, remindAt: Long?) = save(t.id) { now ->
+        val remind = if (remindAt == t.remindAt) now.remindAt else remindAt
+        now.copy(text = text.trim(), remindAt = remind, notifiedAt = if (remind == now.remindAt) now.notifiedAt else null)
+    }
 
     fun create(text: String, remindAt: Long?) {
         viewModelScope.launch {
@@ -57,8 +62,13 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    private fun save(t: TaskItem) {
+    /**
+     * Sobre la fila de ahora y no sobre la copia que tiene la pantalla: lo que la notificación ("Hecho", "Posponer")
+     * o Conversación cambien entretanto no se deshace. Si ya no existe, nada.
+     */
+    private fun save(id: Long, change: (TaskItem) -> TaskItem) {
         viewModelScope.launch {
+            val t = dao.get(id)?.let(change) ?: return@launch
             dao.update(t)
             // El programador solo pone alarma si está OPEN y la hora es futura.
             container.reminders.cancel(t.id)

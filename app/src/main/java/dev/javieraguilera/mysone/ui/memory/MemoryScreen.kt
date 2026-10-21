@@ -53,6 +53,7 @@ import dev.javieraguilera.mysone.data.Fact
 import dev.javieraguilera.mysone.data.FactState
 import dev.javieraguilera.mysone.ui.components.EmptyState
 import dev.javieraguilera.mysone.ui.components.SectionHeader
+import dev.javieraguilera.mysone.ui.components.jsonSaver
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import kotlinx.coroutines.launch
 
@@ -85,7 +86,7 @@ private fun MemoryContent(
     onRestore: (Fact) -> Unit,
     onOpenConversation: (Long) -> Unit,
 ) {
-    var editing by remember { mutableStateOf<Fact?>(null) }
+    var editing by rememberSaveable(saver = jsonSaver<Fact>()) { mutableStateOf(null) }
     var adding by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

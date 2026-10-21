@@ -15,18 +15,20 @@ import androidx.compose.ui.unit.sp
 
 // Paleta de docs/arquitectura.md §8: tinta (primary), ámbar para recordatorios (secondary),
 // salvia para "escuchando" (tertiary). Sin color dinámico.
-// Ojo: el ámbar claro (#B5701F) da 4:1 con blanco; para texto pequeño usa secondaryContainer.
+// En claro, ámbar y salvia van también en texto pequeño (contadores, "Recomendado", avisos): por eso son tonos que
+// pasan de 4,5:1 (AA) sobre background, surface y surfaceContainer. Los de antes (#B5701F, #3E7F6A) se quedaban
+// en 3,3–4,3:1.
 
 private val Light = lightColorScheme(
     primary = Color(0xFF2E4A7A),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFD8E2F7),
     onPrimaryContainer = Color(0xFF0F2547),
-    secondary = Color(0xFFB5701F),
+    secondary = Color(0xFF965A12),
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFFADDB8),
     onSecondaryContainer = Color(0xFF3D2300),
-    tertiary = Color(0xFF3E7F6A),
+    tertiary = Color(0xFF36725F),
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFC4EADB),
     onTertiaryContainer = Color(0xFF0A3326),

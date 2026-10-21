@@ -25,7 +25,7 @@ private val API_KEY = stringPreferencesKey("llm_api_key")
  * Base64(IV‖cifrado) en DataStore. Sin autenticación de usuario: el servicio la lee con la pantalla
  * bloqueada. La clave nunca va a logs, Sentry ni exportaciones.
  */
-class SecretStore(private val context: Context) {
+class SecretStore(private val context: Context, private val settings: SettingsStore) {
 
     val hasApiKey: Flow<Boolean> = context.secretsStore.data.map { it[API_KEY] != null }.distinctUntilChanged()
 
@@ -37,13 +37,17 @@ class SecretStore(private val context: Context) {
         context.secretsStore.edit { it.remove(API_KEY) }
     }
 
-    /** null si no hay clave o si ya no se puede descifrar (restauración, credenciales borradas): se borra y hay que pedirla. */
+    /**
+     * null si no hay clave o si ya no se puede descifrar (restauración, credenciales borradas): se borra y hay que
+     * pedirla. Como al quitarla a mano en Ajustes, la IA se desactiva: si no, Ajustes la seguiría dando por activada.
+     */
     suspend fun apiKey(): String? {
         val blob = context.secretsStore.data.first()[API_KEY] ?: return null
         return try {
             decrypt(blob)
         } catch (_: Exception) {
             clearApiKey()
+            settings.update { it.copy(ai = it.ai.copy(enabled = false)) }
             null
         }
     }

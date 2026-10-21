@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone.capture
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import dev.javieraguilera.mysone.R
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,17 @@ sealed interface ListeningStatus {
     data object NeedsModel : ListeningStatus
     data object NeedsPermission : ListeningStatus
     data class Error(val message: String) : ListeningStatus
+}
+
+/** Quién transcribe la cola de audio pendiente: solo la escucha (también en pausa), y a veces espera. */
+sealed interface QueueStatus {
+    data object Running : QueueStatus
+
+    /** Batería baja sin cargar o móvil muy caliente; [reason] es el id de la cadena con el motivo. */
+    data class Held(@StringRes val reason: Int) : QueueStatus
+
+    /** Sin escucha: lo pendiente se transcribe al volver a escuchar. */
+    data object Stopped : QueueStatus
 }
 
 /**
@@ -47,6 +59,15 @@ object ListeningController {
     /** Lo usa el servicio para publicar su estado. */
     internal fun publish(s: ListeningStatus) {
         _status.value = s
+    }
+
+    private val _queue = MutableStateFlow<QueueStatus>(QueueStatus.Stopped)
+
+    /** Para no decir "Transcribiendo…" de lo que espera a la escucha, a la carga o a que se enfríe el móvil. */
+    val queue: StateFlow<QueueStatus> = _queue.asStateFlow()
+
+    internal fun publishQueue(s: QueueStatus) {
+        _queue.value = s
     }
 
     // Lo último que se ha olvidado, [desde, cuándo se pulsó]. Basta con el último: un trozo llega a la cola como

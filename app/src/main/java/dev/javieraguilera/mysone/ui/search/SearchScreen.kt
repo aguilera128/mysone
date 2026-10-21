@@ -100,7 +100,7 @@ internal fun SearchContent(
                     icon = Icons.Outlined.SearchOff,
                     message = stringResource(R.string.search_empty_body, ui.query.trim()),
                 )
-                else -> Results(groups, onOpen)
+                else -> Results(groups, ui.more, onOpen)
             }
         }
     }
@@ -147,12 +147,12 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit, onBack: 
 }
 
 @Composable
-private fun Results(groups: List<DayGroup>, onOpen: (SegmentHit) -> Unit) {
+private fun Results(groups: List<DayGroup>, more: Boolean, onOpen: (SegmentHit) -> Unit) {
     val total = groups.sumOf { it.hits.size }
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "count") {
             Text(
-                pluralStringResource(R.plurals.search_results, total, total),
+                pluralStringResource(if (more) R.plurals.search_results_more else R.plurals.search_results, total, total),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

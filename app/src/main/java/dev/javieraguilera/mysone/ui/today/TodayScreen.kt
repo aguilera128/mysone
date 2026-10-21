@@ -72,7 +72,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -98,6 +97,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.capture.ListeningStatus
+import dev.javieraguilera.mysone.capture.QueueStatus
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.ConvSource
@@ -129,6 +129,7 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
     val ui by vm.ui.collectAsStateWithLifecycle()
     val selectedDay by vm.selectedDay.collectAsStateWithLifecycle()
     val status by ListeningController.status.collectAsStateWithLifecycle()
+    val queue by ListeningController.queue.collectAsStateWithLifecycle()
     val pending by vm.pendingChunks.collectAsStateWithLifecycle()
     val listeningEnabled by vm.listeningEnabled.collectAsStateWithLifecycle()
 
@@ -158,6 +159,7 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
         onOpenConversation = { onOpenConversation(it, null) },
         onOpenSearch = onOpenSearch,
         onOpenSettings = onOpenSettings,
+        queue = queue,
         statusCard = {
             StatusCard(
                 status = status,
@@ -187,6 +189,7 @@ internal fun TodayContent(
     onOpenConversation: (Long) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    queue: QueueStatus = QueueStatus.Running,
     statusCard: @Composable () -> Unit,
 ) {
     val isToday = selectedDay == Time.today()
@@ -239,7 +242,7 @@ internal fun TodayContent(
                     item(key = "header") { SectionHeader(stringResource(R.string.today_timeline_title)) }
                     items(ui.items, key = { it.key }) { item ->
                         when (item) {
-                            is TimelineItem.Conv -> ConversationRow(item, onClick = { onOpenConversation(item.conversation.id) })
+                            is TimelineItem.Conv -> ConversationRow(item, queue, onClick = { onOpenConversation(item.conversation.id) })
                             is TimelineItem.Gap -> GapRow(item.gap)
                         }
                     }
@@ -545,10 +548,10 @@ private fun Rule(dashed: Boolean, node: Color?, hollow: Boolean = false) {
 }
 
 @Composable
-private fun ConversationRow(item: TimelineItem.Conv, onClick: () -> Unit) {
+private fun ConversationRow(item: TimelineItem.Conv, queue: QueueStatus, onClick: () -> Unit) {
     val conv = item.conversation
     val c = MaterialTheme.colorScheme
-    val title = conversationTitle(conv, item.transcribing)
+    val title = conversationTitle(conv, item.transcribing, queue)
     val open = conv.state == ConvState.OPEN
     val meta = joined(
         timeRange(conv.startedAt, if (open) null else conv.endedAt),
@@ -567,22 +570,28 @@ private fun ConversationRow(item: TimelineItem.Conv, onClick: () -> Unit) {
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
             .clickable(onClickLabel = stringResource(R.string.today_open_conversation), onClick = onClick)
-            .padding(horizontal = 16.dp)
-            .alpha(if (conv.isNoise) 0.7f else 1f),
+            .padding(horizontal = 16.dp),
     ) {
         TimeMargin(Time.hourMinute(conv.startedAt))
         Rule(dashed = false, node = node, hollow = item.transcribing && !open)
         Column(Modifier.weight(1f).padding(top = 12.dp, bottom = 12.dp, start = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            // El ruido se atenúa con el color del texto y del nodo, no con transparencia: así no baja de 4,5:1 (AA).
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (conv.title == null) c.onSurfaceVariant else c.onSurface,
+                color = if (conv.title == null || conv.isNoise) c.onSurfaceVariant else c.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(meta, style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant)
             conv.summary?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (conv.isNoise) c.onSurfaceVariant else c.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             if (item.reminders > 0 || item.otherTasks > 0) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 2.dp)) {

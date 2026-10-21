@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.capture.ListeningController
+import dev.javieraguilera.mysone.capture.QueueStatus
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.ConvSource
@@ -98,6 +100,7 @@ fun ConversationScreen(id: Long, segmentId: Long?, onBack: () -> Unit) {
     val vm = viewModel { ConversationViewModel(container, id) }
     val state by vm.state.collectAsStateWithLifecycle()
     val aiConfigured by vm.aiConfigured.collectAsStateWithLifecycle()
+    val queue by ListeningController.queue.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
@@ -129,6 +132,7 @@ fun ConversationScreen(id: Long, segmentId: Long?, onBack: () -> Unit) {
         onDismissTask = vm::dismissTask,
         onConfirmFact = vm::confirmFact,
         onDismissFact = vm::dismissFact,
+        queue = queue,
     )
 }
 
@@ -146,6 +150,7 @@ internal fun ConversationContent(
     onDismissTask: (TaskItem) -> Unit,
     onConfirmFact: (Fact) -> Unit,
     onDismissFact: (Fact) -> Unit,
+    queue: QueueStatus = QueueStatus.Running,
 ) {
     val loaded = state as? ConversationState.Loaded
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
@@ -180,7 +185,7 @@ internal fun ConversationContent(
                 action = { Button(onClick = onBack) { Text(stringResource(R.string.action_back)) } },
             )
             is ConversationState.Loaded -> Body(
-                state, segmentId, aiConfigured, Modifier.padding(inner),
+                state, segmentId, aiConfigured, queue, Modifier.padding(inner),
                 onAcceptTask, onDismissTask, onConfirmFact, onDismissFact,
             )
         }
@@ -225,6 +230,7 @@ private fun Body(
     state: ConversationState.Loaded,
     segmentId: Long?,
     aiConfigured: Boolean,
+    queue: QueueStatus,
     modifier: Modifier,
     onAcceptTask: (TaskItem) -> Unit,
     onDismissTask: (TaskItem) -> Unit,
@@ -247,8 +253,8 @@ private fun Body(
     LazyColumn(state = list, modifier = modifier.fillMaxSize()) {
         item(key = "header") {
             Column {
-                Header(conv, state.transcribing)
-                Banners(conv, state.transcribing, aiConfigured)
+                Header(conv, state.transcribing, queue)
+                Banners(conv, state.transcribing, queue, aiConfigured)
                 conv.summary?.let {
                     SectionHeader(stringResource(R.string.conv_summary))
                     Text(it, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp))
@@ -288,11 +294,11 @@ private fun Body(
 }
 
 @Composable
-private fun Header(conv: Conversation, transcribing: Boolean) {
+private fun Header(conv: Conversation, transcribing: Boolean, queue: QueueStatus) {
     val open = conv.state == ConvState.OPEN
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            conversationTitle(conv, transcribing),
+            conversationTitle(conv, transcribing, queue),
             style = MaterialTheme.typography.headlineSmall,
             color = if (conv.title == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
@@ -311,10 +317,18 @@ private fun Header(conv: Conversation, transcribing: Boolean) {
 
 /** Avisos de estado bajo el título: uno por motivo, en el orden en que importan. */
 @Composable
-private fun Banners(conv: Conversation, transcribing: Boolean, aiConfigured: Boolean) {
+private fun Banners(conv: Conversation, transcribing: Boolean, queue: QueueStatus, aiConfigured: Boolean) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (transcribing) Banner(Icons.Outlined.GraphicEq, stringResource(R.string.conv_banner_transcribing), c.tertiary)
+        // Solo la escucha transcribe la cola: sin ella, o con batería baja, se dice a qué espera.
+        if (transcribing) {
+            val text = when (queue) {
+                QueueStatus.Running -> stringResource(R.string.conv_banner_transcribing)
+                is QueueStatus.Held -> stringResource(R.string.conv_banner_held, stringResource(queue.reason))
+                QueueStatus.Stopped -> stringResource(R.string.conv_banner_pending)
+            }
+            Banner(Icons.Outlined.GraphicEq, text, c.tertiary)
+        }
         when {
             conv.state == ConvState.PROCESSING -> Banner(null, stringResource(R.string.conv_banner_processing), c.primary, busy = true)
             conv.state == ConvState.FAILED -> Banner(

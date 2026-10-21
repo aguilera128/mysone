@@ -19,6 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -29,6 +32,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.core.AppJson
+import kotlinx.serialization.encodeToString
+
+/**
+ * Para `rememberSaveable` de una entidad @Serializable (la tarea o el recuerdo que se está editando): el diálogo
+ * sobrevive a girar el móvil y a que el sistema mate el proceso. null no se guarda.
+ */
+inline fun <reified T : Any> jsonSaver(): Saver<MutableState<T?>, String> = Saver(
+    save = { state -> state.value?.let { AppJson.encodeToString(it) } },
+    restore = { mutableStateOf(AppJson.decodeFromString<T>(it)) },
+)
 
 /** Barra superior con "Volver", para las pantallas que no son pestañas. */
 @OptIn(ExperimentalMaterial3Api::class)

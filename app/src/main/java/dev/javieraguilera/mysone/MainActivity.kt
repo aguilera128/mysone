@@ -32,16 +32,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavEntryDecorator
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.ui.ask.AskScreen
@@ -169,7 +171,7 @@ private fun MysoneNav(
         backStack = backStack,
         onBack = back,
         entryDecorators = listOf(
-            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberTabStateDecorator(),
             rememberViewModelStoreNavEntryDecorator(),
         ),
         entryProvider = entryProvider {
@@ -193,7 +195,7 @@ private fun MysoneNav(
             }
             entry<ConversationDetail> { key -> ConversationScreen(id = key.id, segmentId = key.segmentId, onBack = back) }
             entry<Search> { SearchScreen(onOpenConversation = openConversation, onBack = back) }
-            entry<Ask> {
+            entry<Ask>(clazzContentKey = { "${TAB_STATE}ask" }) {
                 TabScaffold(Ask, selectTab) {
                     AskScreen(
                         onOpenConversation = openConversation,
@@ -202,10 +204,13 @@ private fun MysoneNav(
                     )
                 }
             }
-            entry<Tasks> { key ->
+            // La que viene de un aviso (con tarea que resaltar) es otra entrada, con su propio estado.
+            entry<Tasks>(clazzContentKey = { if (it.highlightTaskId == null) "${TAB_STATE}tasks" else it.toString() }) { key ->
                 TabScaffold(key, selectTab) { TasksScreen(highlightTaskId = key.highlightTaskId, onOpenConversation = openConversation) }
             }
-            entry<Memory> { TabScaffold(Memory, selectTab) { MemoryScreen(onOpenConversation = openConversation) } }
+            entry<Memory>(clazzContentKey = { "${TAB_STATE}memory" }) {
+                TabScaffold(Memory, selectTab) { MemoryScreen(onOpenConversation = openConversation) }
+            }
             entry<Settings> {
                 SettingsScreen(
                     onBack = back,
@@ -221,6 +226,26 @@ private fun MysoneNav(
             entry<About> { AboutScreen(onBack = back) }
         },
     )
+}
+
+/** Clave de estado de las raíces de Preguntar, Tareas y Memoria (Hoy es la raíz de la pila y no sale de ella). */
+private const val TAB_STATE = "tab:"
+
+/**
+ * Como rememberSaveableStateHolderNavEntryDecorator, salvo que no borra el estado guardado de las raíces de las
+ * pestañas al sacarlas de la pila. Cambiar de pestaña las saca (selectTab) y, si no, al volver se habría perdido lo
+ * escrito en Preguntar, la pestaña elegida en Tareas o el scroll. Lo que va encima (Buscar, una conversación) sí se
+ * borra al salir. Sus ViewModels se recrean igual: solo leen de la BD.
+ */
+@Composable
+private fun rememberTabStateDecorator(): NavEntryDecorator<NavKey> {
+    val holder = rememberSaveableStateHolder()
+    return remember(holder) {
+        NavEntryDecorator<NavKey>(
+            onPop = { key -> if (!(key is String && key.startsWith(TAB_STATE))) holder.removeState(key) },
+            decorate = { entry -> holder.SaveableStateProvider(entry.contentKey) { entry.Content() } },
+        )
+    }
 }
 
 /**

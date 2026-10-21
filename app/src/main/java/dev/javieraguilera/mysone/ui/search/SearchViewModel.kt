@@ -23,8 +23,11 @@ data class SearchHitUi(val hit: SegmentHit, val conversationTitle: String?)
 
 data class DayGroup(val day: String, val hits: List<SearchHitUi>)
 
-/** [query] es la consulta a la que corresponden [groups]; [groups] null = nada que buscar. */
-data class SearchUi(val query: String, val groups: List<DayGroup>?)
+/**
+ * [query] es la consulta a la que corresponden [groups]; [groups] null = nada que buscar. [more]: hay más de
+ * [LIMIT] y solo están los que más se parecen.
+ */
+data class SearchUi(val query: String, val groups: List<DayGroup>?, val more: Boolean = false)
 
 private const val LIMIT = 100
 
@@ -38,18 +41,21 @@ class SearchViewModel(container: AppContainer) : ViewModel() {
 
     val ui: StateFlow<SearchUi> = snapshotFlow { query }
         .debounce { if (it.isBlank()) 0L else 300L }
-        .mapLatest { SearchUi(it, search(it)) }
+        .mapLatest(::search)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUi("", null))
 
     fun onQueryChange(q: String) {
         query = q
     }
 
-    private suspend fun search(q: String): List<DayGroup>? {
-        val fts = FtsQuery.all(q) ?: return null
-        val hits = db.segments().search(fts, 0, Long.MAX_VALUE, LIMIT)
+    private suspend fun search(q: String): SearchUi {
+        val fts = FtsQuery.all(q) ?: return SearchUi(q, null)
+        // Uno de más para saber si hay más: si no, "100 resultados" parecería el total y faltarían días sin aviso.
+        val found = db.segments().search(fts, 0, Long.MAX_VALUE, LIMIT + 1)
+        val hits = found.take(LIMIT)
         val titles = db.conversations().byIds(hits.map { it.conversationId }.distinct()).associate { it.id to it.title }
-        return groupByDay(hits).map { (day, dayHits) -> DayGroup(day, dayHits.map { SearchHitUi(it, titles[it.conversationId]) }) }
+        val groups = groupByDay(hits).map { (day, dayHits) -> DayGroup(day, dayHits.map { SearchHitUi(it, titles[it.conversationId]) }) }
+        return SearchUi(q, groups, more = found.size > LIMIT)
     }
 }
 

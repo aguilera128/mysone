@@ -273,6 +273,9 @@ interface FactDao {
     @Query("UPDATE fact SET state = :state WHERE id = :id")
     suspend fun setState(id: Long, state: String)
 
+    @Query("UPDATE fact SET text = :text WHERE id = :id")
+    suspend fun setText(id: Long, text: String)
+
     @Query("SELECT * FROM fact WHERE state = :state ORDER BY createdAt DESC")
     fun observeByState(state: String): Flow<List<Fact>>
 

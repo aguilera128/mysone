@@ -30,7 +30,7 @@ class AppContainer(val app: Application) {
     )
     val db: AppDatabase by lazy { AppDatabase.create(app) }
     val settings: SettingsStore by lazy { SettingsStore(app) }
-    val secrets: SecretStore by lazy { SecretStore(app) }
+    val secrets: SecretStore by lazy { SecretStore(app, settings) }
     val models: ModelManager by lazy { ModelManager(app) }
     val transcriber: Transcriber by lazy { Transcriber(app, models, settings) }
     val ai: AiProcessing by lazy { AiProcessing(this) }

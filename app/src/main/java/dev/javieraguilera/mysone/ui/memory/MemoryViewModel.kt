@@ -21,7 +21,8 @@ class MemoryViewModel(container: AppContainer) : ViewModel() {
 
     fun confirm(f: Fact) = launch { dao.setState(f.id, FactState.CONFIRMED) }
 
-    fun edit(f: Fact, text: String) = launch { dao.update(f.copy(text = text.trim())) }
+    /** Solo el texto: confirmarlo mientras se editaba no se deshace. */
+    fun edit(f: Fact, text: String) = launch { dao.setText(f.id, text.trim()) }
 
     /** Lo añadido a mano ya está confirmado. */
     fun add(text: String) = launch {

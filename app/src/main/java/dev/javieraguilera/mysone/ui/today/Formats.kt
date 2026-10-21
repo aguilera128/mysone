@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone.ui.today
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.capture.QueueStatus
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
@@ -85,11 +86,15 @@ internal fun gapLabel(reason: String): String = stringResource(
 @Composable
 internal fun dayTime(ms: Long): String = stringResource(R.string.ui_day_time, Time.dayShort(ms), Time.hourMinute(ms))
 
-/** El título de la IA o, si aún no lo hay, en qué punto está la conversación. */
+/**
+ * El título de la IA o, si aún no lo hay, en qué punto está la conversación. [transcribing]: le queda audio por
+ * transcribir, que solo es "Transcribiendo…" si la escucha lo está haciendo ([queue]).
+ */
 @Composable
-internal fun conversationTitle(conv: Conversation, transcribing: Boolean): String = conv.title ?: stringResource(
+internal fun conversationTitle(conv: Conversation, transcribing: Boolean, queue: QueueStatus = QueueStatus.Running): String = conv.title ?: stringResource(
     when {
-        transcribing -> R.string.conv_state_transcribing
+        transcribing && queue == QueueStatus.Running -> R.string.conv_state_transcribing
+        transcribing -> R.string.conv_state_pending_audio
         conv.state == ConvState.OPEN -> R.string.conv_state_open
         conv.state == ConvState.PROCESSING -> R.string.conv_state_processing
         conv.state == ConvState.FAILED -> R.string.conv_state_failed

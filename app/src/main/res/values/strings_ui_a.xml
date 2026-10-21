@@ -23,6 +23,7 @@
 
     <!-- Estado de una conversación -->
     <string name="conv_state_transcribing">Transcribiendo…</string>
+    <string name="conv_state_pending_audio">Pendiente de transcribir</string>
     <string name="conv_state_open">En curso</string>
     <string name="conv_state_processing">Resumiendo…</string>
     <string name="conv_state_unprocessed">Sin procesar</string>
@@ -97,6 +98,8 @@
     <string name="conv_delete_message">Se borran su transcripción, el resumen y las tareas y datos que salieron de ella. No se puede deshacer.</string>
     <string name="conv_reprocess_failed">No se pudo procesar. Revisa la IA en Ajustes.</string>
     <string name="conv_banner_transcribing">Aún se está transcribiendo parte de esta conversación.</string>
+    <string name="conv_banner_pending">Parte de esta conversación está pendiente de transcribir: se hará cuando vuelvas a escuchar.</string>
+    <string name="conv_banner_held">%1$s. Parte de esta conversación aún no está transcrita.</string>
     <string name="conv_banner_processing">Resumiendo con IA…</string>
     <string name="conv_banner_failed">No se pudo procesar: %1$s</string>
     <string name="conv_banner_failed_generic">No se pudo procesar.</string>
@@ -130,6 +133,10 @@
     <string name="search_idle_body">Por ejemplo: presupuesto, Lucía o dentista. La búsqueda se hace en el teléfono.</string>
     <string name="search_empty_title">Sin resultados</string>
     <string name="search_empty_body">«%1$s» no aparece en tus transcripciones.</string>
+    <plurals name="search_results_more">
+        <item quantity="one">Más de %1$d resultado: aquí está el que más se parece. Añade palabras para afinar.</item>
+        <item quantity="other">Más de %1$d resultados: aquí están los %1$d que más se parecen. Añade palabras para afinar.</item>
+    </plurals>
     <plurals name="search_results">
         <item quantity="one">%d resultado</item>
         <item quantity="other">%d resultados</item>

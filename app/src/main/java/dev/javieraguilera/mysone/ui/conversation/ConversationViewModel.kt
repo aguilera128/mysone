@@ -73,11 +73,11 @@ class ConversationViewModel(private val container: AppContainer, private val id:
 
     // Las escrituras van en appScope para que terminen aunque se cierre la pantalla.
 
+    /** Solo el estado, y la alarma con la fila de ahora: no se pisa lo que haya cambiado desde que se pintó. */
     fun acceptTask(task: TaskItem) {
-        val open = task.copy(state = TaskState.OPEN)
         container.appScope.launch {
-            db.tasks().update(open)
-            container.reminders.schedule(open)
+            db.tasks().setState(task.id, TaskState.OPEN)
+            db.tasks().get(task.id)?.let { container.reminders.schedule(it) }
         }
     }
 

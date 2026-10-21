@@ -24,13 +24,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
+        // http:// al propio equipo (tools/mock-llm.mjs desde el emulador). Lo permite el networkSecurityConfig de debug y qa.
+        buildConfigField("boolean", "ALLOW_LOCAL_HTTP", "false")
     }
     buildTypes {
+        debug {
+            buildConfigField("boolean", "ALLOW_LOCAL_HTTP", "true")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("debug") // uso personal por sideload
+        }
+        // La release (R8 y shrink) contra el servidor falso en el emulador; se instala junto a las otras.
+        create("qa") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".qa"
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "ALLOW_LOCAL_HTTP", "true")
         }
     }
     compileOptions {

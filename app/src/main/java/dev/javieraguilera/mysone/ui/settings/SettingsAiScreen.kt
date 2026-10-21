@@ -155,10 +155,10 @@ class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
 private val LOCAL_HOSTS = setOf("10.0.2.2", "localhost", "127.0.0.1")
 
 /**
- * https, o http solo hacia el propio equipo (servidor falso de pruebas en el emulador) y solo en debug: en
+ * https, o http solo hacia el propio equipo (servidor falso de pruebas en el emulador) y solo en debug y qa: en
  * release el networkSecurityConfig no deja texto plano y la petición fallaría como si no hubiera red (§9).
  */
-fun isValidBaseUrl(url: String, allowLocalHttp: Boolean = BuildConfig.DEBUG): Boolean {
+fun isValidBaseUrl(url: String, allowLocalHttp: Boolean = BuildConfig.ALLOW_LOCAL_HTTP): Boolean {
     val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return false
     val host = uri.host ?: return false
     return uri.scheme == "https" || (allowLocalHttp && uri.scheme == "http" && host in LOCAL_HOSTS)

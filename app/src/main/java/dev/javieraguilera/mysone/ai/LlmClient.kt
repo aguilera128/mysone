@@ -63,7 +63,15 @@ class LlmException(
     message: String,
     val retryAfterMs: Long? = null,
     val retryable: Boolean = kind in RETRYABLE,
+    val httpCode: Int? = null,
 ) : Exception(message)
+
+/**
+ * 400, 413, 422…: el servidor no acepta esta petición en concreto (contenido que filtra, demasiado grande). Otra
+ * conversación puede pasar; 404 es la URL o el modelo, y clave, cuota y tiempo de espera tienen su propio tipo.
+ */
+internal fun LlmException.isRequestError(): Boolean =
+    kind == LlmErrorKind.SERVER && !retryable && httpCode != null && httpCode in 400..499 && httpCode != 404
 
 /** Cliente según el proveedor de los ajustes. */
 internal fun llmClient(ai: AiSettings, apiKey: String, http: OkHttpClient = defaultHttp): LlmClient =
@@ -119,7 +127,7 @@ internal fun httpError(reply: HttpReply): LlmException {
         408 -> LlmException(LlmErrorKind.NETWORK, msg)
         429 -> LlmException(LlmErrorKind.RATE, msg, retryAfter)
         in 500..599 -> LlmException(LlmErrorKind.SERVER, msg, retryAfter)
-        else -> LlmException(LlmErrorKind.SERVER, msg, retryable = false) // 400, 404…: URL, modelo o petición
+        else -> LlmException(LlmErrorKind.SERVER, msg, retryable = false, httpCode = reply.code) // 400, 404…: URL, modelo o petición
     }
 }
 

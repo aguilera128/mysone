@@ -125,6 +125,7 @@ class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             container.secrets.setApiKey(key.trim())
             _test.value = ConnectionTest.Idle
+            container.ai.resetFailures()
         }
     }
 
@@ -147,8 +148,12 @@ class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Con otra URL, modelo o el aviso aceptado, lo que falló por los ajustes anteriores se vuelve a intentar. */
     private fun updateAi(transform: (AiSettings) -> AiSettings) {
-        viewModelScope.launch { container.settings.update { it.copy(ai = transform(it.ai)) } }
+        viewModelScope.launch {
+            container.settings.update { it.copy(ai = transform(it.ai)) }
+            container.ai.resetFailures()
+        }
     }
 }
 

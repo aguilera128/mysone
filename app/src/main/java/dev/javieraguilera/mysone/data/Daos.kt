@@ -80,6 +80,32 @@ interface ConversationDao {
     @Query("UPDATE conversation SET state = :state WHERE id = :id")
     suspend fun setState(id: Long, state: String)
 
+    /** Solo si sigue en [from]: "olvidar" o borrar pueden haberla cambiado mientras tanto. */
+    @Query("UPDATE conversation SET state = :to WHERE id = :id AND state = :from")
+    suspend fun setStateIf(id: Long, from: String, to: String)
+
+    /** Fin de un procesado fallido, si nadie la ha tocado mientras ("olvidar" la deja en READY y sin resumen). */
+    @Query(
+        "UPDATE conversation SET state = :state, processAttempts = processAttempts + :addAttempts, lastError = :lastError " +
+            "WHERE id = :id AND state = 'PROCESSING'",
+    )
+    suspend fun endFailed(id: Long, state: String, addAttempts: Int, lastError: String?)
+
+    /** Con otros ajustes de IA, las que fallaron recuperan sus intentos. */
+    @Query("UPDATE conversation SET processAttempts = 0 WHERE state = 'FAILED'")
+    suspend fun resetFailedAttempts()
+
+    /**
+     * "Olvidar" la ha tocado: sin lo derivado y con las horas de lo que queda. La abierta sigue abierta;
+     * el resto, a reprocesar.
+     */
+    @Query(
+        "UPDATE conversation SET startedAt = :startedAt, endedAt = :endedAt, title = NULL, summary = NULL, " +
+            "keyPoints = NULL, isNoise = 0, processAttempts = 0, processedAt = NULL, lastError = NULL, " +
+            "state = CASE WHEN state = 'OPEN' THEN 'OPEN' ELSE 'READY' END WHERE id = :id",
+    )
+    suspend fun resetForgotten(id: Long, startedAt: Long, endedAt: Long)
+
     @Query("UPDATE conversation SET endedAt = :endedAt WHERE id = :id")
     suspend fun setEndedAt(id: Long, endedAt: Long)
 
@@ -261,6 +287,9 @@ interface FactDao {
     @Query("SELECT * FROM fact WHERE conversationId = :id ORDER BY createdAt")
     fun observeForConversation(id: Long): Flow<List<Fact>>
 
+    @Query("SELECT * FROM fact WHERE conversationId = :id ORDER BY createdAt")
+    suspend fun forConversation(id: Long): List<Fact>
+
     @Query("SELECT * FROM fact WHERE state = :state ORDER BY createdAt DESC LIMIT :limit")
     suspend fun listByState(state: String, limit: Int): List<Fact>
 
@@ -284,6 +313,10 @@ interface DigestDao {
 
     @Query("SELECT * FROM daily_digest ORDER BY day")
     suspend fun all(): List<DailyDigest>
+
+    /** Días "yyyy-MM-dd" entre [fromDay] y [toDay], ambos incluidos. */
+    @Query("DELETE FROM daily_digest WHERE day >= :fromDay AND day <= :toDay")
+    suspend fun deleteDays(fromDay: String, toDay: String)
 }
 
 @Dao

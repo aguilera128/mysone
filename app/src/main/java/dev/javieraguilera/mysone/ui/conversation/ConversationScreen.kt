@@ -159,7 +159,8 @@ internal fun ConversationContent(
                     if (loaded != null) {
                         Actions(
                             canCopy = loaded.segments.isNotEmpty(),
-                            canReprocess = aiConfigured && !loaded.transcribing &&
+                            // Sin transcripción (retención) no hay nada que mandar: se quedaría como ruido.
+                            canReprocess = aiConfigured && !loaded.transcribing && loaded.segments.isNotEmpty() &&
                                 loaded.conversation.state !in setOf(ConvState.OPEN, ConvState.PROCESSING),
                             onCopy = onCopy,
                             onReprocess = onReprocess,

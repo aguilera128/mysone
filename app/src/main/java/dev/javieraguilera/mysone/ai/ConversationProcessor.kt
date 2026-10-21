@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ai
 
+import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
@@ -12,24 +13,26 @@ import dev.javieraguilera.mysone.data.Segment
 import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
 import java.time.ZoneId
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 
 /** Título, resumen, puntos clave, tareas y facts de una conversación (§7.3). El estado lo lleva [AiProcessing]. */
 class ConversationProcessor(private val container: AppContainer) {
 
-    /** Llama a la IA y guarda el resultado con la conversación en DONE. Lanza [LlmException]. */
-    suspend fun process(c: Conversation, cfg: AiConfig, zone: ZoneId = Time.zone()) {
+    /**
+     * Llama a la IA y guarda el resultado con la conversación en DONE. Lanza [LlmException]. false si no se ha
+     * guardado nada porque mientras tanto la han olvidado, borrado o cambiado (ver [save]).
+     */
+    suspend fun process(c: Conversation, cfg: AiConfig, zone: ZoneId = Time.zone()): Boolean {
         val db = container.db
         val now = System.currentTimeMillis()
         val segments = db.segments().textForConversation(c.id)
         if (segments.isEmpty()) {
-            db.conversations().update(c.copy(state = ConvState.DONE, isNoise = true, processedAt = now, lastError = null))
-            return
+            return save(c.id, segments) {
+                db.conversations().update(it.copy(state = ConvState.DONE, isNoise = true, processedAt = now, lastError = null))
+            }
         }
-        val oldTasks = db.tasks().forConversation(c.id)
         // Lo sugerido se rehace; lo que el usuario ya ha tocado y los recordatorios rápidos se quedan.
-        val kept = oldTasks.filter { it.state != TaskState.SUGGESTED }.map { it.text }
+        val kept = db.tasks().forConversation(c.id).filter { it.state != TaskState.SUGGESTED }.map { it.text }
         val registered = kept.toMutableList()
         val parts = splitTranscript(segments)
         val outs = parts.mapIndexed { i, part ->
@@ -42,33 +45,52 @@ class ConversationProcessor(private val container: AppContainer) {
         }
         val result = validate(merge(outs), c.startedAt, zone, kept)
 
-        oldTasks.filter { it.state == TaskState.SUGGESTED }.forEach { db.tasks().delete(it.id) }
-        db.facts().observeForConversation(c.id).first()
-            .filter { it.state == FactState.SUGGESTED }
-            .forEach { db.facts().delete(it.id) }
-        result.tasks.forEach { saveTask(it, c.id, now) }
-        result.facts.forEach { db.facts().insert(Fact(text = it, state = FactState.SUGGESTED, conversationId = c.id, createdAt = now)) }
-        db.conversations().update(
-            c.copy(
-                state = ConvState.DONE,
-                title = result.title,
-                summary = result.summary,
-                keyPoints = AppJson.encodeToString(result.keyPoints),
-                isNoise = result.isNoise,
-                processedAt = now,
-                lastError = null,
-            ),
-        )
+        return save(c.id, segments) { current ->
+            db.tasks().forConversation(c.id).filter { it.state == TaskState.SUGGESTED }.forEach { db.tasks().delete(it.id) }
+            db.facts().forConversation(c.id).filter { it.state == FactState.SUGGESTED }.forEach { db.facts().delete(it.id) }
+            result.tasks.forEach { saveTask(it, c.id, now) }
+            result.facts.forEach { db.facts().insert(Fact(text = it, state = FactState.SUGGESTED, conversationId = c.id, createdAt = now)) }
+            db.conversations().update(
+                current.copy(
+                    state = ConvState.DONE,
+                    title = result.title,
+                    summary = result.summary,
+                    keyPoints = AppJson.encodeToString(result.keyPoints),
+                    isNoise = result.isNoise,
+                    processedAt = now,
+                    lastError = null,
+                ),
+            )
+        }
     }
 
-    /** Inserta la tarea y, si es un recordatorio abierto con hora futura, programa la alarma. */
+    /**
+     * Escribe el resultado en una transacción, y solo si la conversación sigue en PROCESSING con los segmentos
+     * que se enviaron. "Olvidar", borrar y "Borrar todo" escriben en otra: o terminan antes y aquí se descarta, o
+     * después y se llevan también esto. Si solo han cambiado los segmentos, vuelve a READY para reprocesarla.
+     */
+    private suspend fun save(id: Long, sent: List<Segment>, write: suspend (Conversation) -> Unit): Boolean {
+        val db = container.db
+        return db.withWriteTransaction {
+            val current = db.conversations().get(id)?.takeIf { it.state == ConvState.PROCESSING }
+                ?: return@withWriteTransaction false
+            if (db.segments().textForConversation(id).map { it.id } != sent.map { it.id }) {
+                db.conversations().setState(id, ConvState.READY)
+                return@withWriteTransaction false
+            }
+            write(current)
+            true
+        }
+    }
+
+    /** Inserta la tarea y, si es un recordatorio abierto, programa la alarma (con la hora recién pasada, avisa ya). */
     internal suspend fun saveTask(t: NewTask, conversationId: Long, now: Long) {
         val item = TaskItem(
             text = t.text, state = t.state, dueAt = t.dueAt, remindAt = t.remindAt,
             conversationId = conversationId, sourceQuote = t.quote, createdAt = now,
         )
         val id = container.db.tasks().insert(item)
-        if (item.state == TaskState.OPEN && (item.remindAt ?: 0) > now) container.reminders.schedule(item.copy(id = id))
+        if (item.state == TaskState.OPEN && item.remindAt != null) container.reminders.schedule(item.copy(id = id))
     }
 }
 

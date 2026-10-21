@@ -51,9 +51,11 @@ class AiProcessing(private val container: AppContainer) {
     @Suppress("UNUSED_PARAMETER")
     fun onConversationReady(conversationId: Long) = ProcessWorker.enqueue(container.app)
 
-    suspend fun processConversation(id: Long, force: Boolean = false): Result<Unit> {
+    // Ajustes y clave se leen con el cerrojo cogido, justo antes de cada llamada: lo que esperaba (o lo que queda
+    // de la cola) no sale hacia un proveedor que entretanto se ha apagado, cambiado o quedado sin clave.
+    suspend fun processConversation(id: Long, force: Boolean = false): Result<Unit> = mutex.withLock {
         val cfg = aiConfig(container) ?: return Result.failure(notConfigured())
-        return mutex.withLock { processLocked(id, force, cfg) }.map { }
+        processLocked(id, force, cfg).map { }
     }
 
     /** READY sin audio pendiente (y FAILED con intentos); devuelve cuántas. */
@@ -66,20 +68,34 @@ class AiProcessing(private val container: AppContainer) {
      * Se para ante un error que afectaría a todas (clave, red, cuota, URL o modelo); [Drain.retryLater] si es pasajero.
      */
     internal suspend fun drain(): Drain {
-        val cfg = aiConfig(container) ?: return Drain(0, retryLater = false)
         val dao = container.db.conversations()
         val tried = mutableSetOf<Long>()
+        val retried = mutableSetOf<Long>()
         var processed = 0
+        var lastRequestError: Int? = null
         while (true) {
             val queue = (dao.readyWithoutPending() + dao.byState(ConvState.PROCESSING) +
                 dao.byState(ConvState.FAILED).filter { it.processAttempts < MAX_ATTEMPTS })
-                .sortedBy { it.startedAt }.map { it.id }.filter { tried.add(it) }
+                .sortedBy { it.startedAt }
+                // READY otra vez en la misma pasada: "olvidar" la ha dejado sin resumen y su aviso no llega (KEEP).
+                .filter { tried.add(it.id) || (it.state == ConvState.READY && retried.add(it.id)) }
+                .map { it.id }
             if (queue.isEmpty()) return Drain(processed, retryLater = false)
             for (id in queue) {
-                val result = mutex.withLock { processLocked(id, force = false, cfg) }
+                val result = mutex.withLock {
+                    val cfg = aiConfig(container) ?: return Drain(processed, retryLater = false)
+                    processLocked(id, force = false, cfg)
+                }
                 if (result.getOrNull() == true) processed++
-                val e = result.exceptionOrNull() as? LlmException ?: continue
-                if (e.kind != LlmErrorKind.BAD_OUTPUT && e.kind != LlmErrorKind.REFUSAL) return Drain(processed, e.retryable)
+                val e = result.exceptionOrNull() as? LlmException
+                if (e != null && e.isRequestError()) {
+                    // Una suelta es de esa conversación; dos seguidas con el mismo código, de los ajustes (modelo, URL).
+                    if (e.httpCode == lastRequestError) return Drain(processed, retryLater = false)
+                    lastRequestError = e.httpCode
+                    continue
+                }
+                lastRequestError = null
+                if (e != null && !e.countsAsAttempt()) return Drain(processed, e.retryable)
             }
         }
     }
@@ -92,35 +108,42 @@ class AiProcessing(private val container: AppContainer) {
         if (!force && (c.state == ConvState.DONE || container.db.pendingAudio().countForConversation(id) > 0)) {
             return Result.success(false)
         }
+        // Ya resumida y sin transcripción (la retención la borra): reprocesarla la dejaría como ruido para siempre.
+        if (c.processedAt != null && container.db.segments().countForConversation(id) == 0) return Result.success(false)
         val previous = if (c.state == ConvState.PROCESSING) ConvState.READY else c.state
         dao.setState(id, ConvState.PROCESSING)
+        // Los fallos solo se apuntan si sigue en PROCESSING: si "olvidar" o borrar la han tocado, manda lo suyo.
         return try {
-            processor.process(c.copy(state = ConvState.PROCESSING), cfg)
-            Result.success(true)
+            val saved = processor.process(c.copy(state = ConvState.PROCESSING), cfg)
+            // Descartado porque la transcripción ha cambiado mientras: que la cola la vuelva a mirar.
+            if (!saved) onConversationReady(id)
+            Result.success(saved)
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { dao.setState(id, previous) }
+            withContext(NonCancellable) { dao.setStateIf(id, ConvState.PROCESSING, previous) }
             throw e
         } catch (e: LlmException) {
-            // De formato o rechazo: cuenta como intento. Clave, red, cuota o servidor: vuelve a la cola.
-            val contentError = e.kind == LlmErrorKind.BAD_OUTPUT || e.kind == LlmErrorKind.REFUSAL
-            dao.update(
-                c.copy(
-                    state = if (contentError) ConvState.FAILED else ConvState.READY,
-                    processAttempts = c.processAttempts + if (contentError) 1 else 0,
-                    lastError = "${container.app.getString(e.kind.messageRes)} (${e.message})", // se muestra tal cual en Conversación
-                ),
+            // De esta conversación: cuenta como intento. Clave, red, cuota o servidor: vuelve a la cola.
+            val counts = e.countsAsAttempt()
+            dao.endFailed(
+                id,
+                state = if (counts) ConvState.FAILED else ConvState.READY,
+                addAttempts = if (counts) 1 else 0,
+                lastError = "${container.app.getString(e.kind.messageRes)} (${e.message})", // se muestra tal cual en Conversación
             )
             Result.failure(e)
         } catch (e: Exception) {
             Sentry.captureException(e)
-            dao.update(c.copy(state = ConvState.FAILED, processAttempts = c.processAttempts + 1, lastError = null)) // la UI da el mensaje genérico
+            dao.endFailed(id, ConvState.FAILED, addAttempts = 1, lastError = null) // la UI da el mensaje genérico
             Result.failure(e)
         }
     }
 
-    suspend fun buildMissingDigests(): Int {
-        val cfg = aiConfig(container) ?: return 0
-        return mutex.withLock { digests.buildMissing(cfg) }
+    suspend fun buildMissingDigests(): Int = mutex.withLock { digests.buildMissing() }
+
+    /** Tras cambiar los ajustes de IA: lo que falló por ellos (modelo, URL, clave) recupera sus intentos. */
+    suspend fun resetFailures() {
+        container.db.conversations().resetFailedAttempts()
+        ProcessWorker.enqueue(container.app)
     }
 
     /** Para Ajustes: no exige haber activado la IA ni aceptado el aviso (no se envía nada del usuario). */
@@ -162,3 +185,7 @@ private fun AiSettings.isReady() =
     enabled && consentAt != null && baseUrl.isNotBlank() && modelBackground.isNotBlank() && modelAnswer.isNotBlank()
 
 internal fun notConfigured() = LlmException(LlmErrorKind.AUTH, "IA no configurada", retryable = false)
+
+/** Error de esa conversación y no de los ajustes: cuenta como intento y la cola sigue. */
+internal fun LlmException.countsAsAttempt() =
+    kind == LlmErrorKind.BAD_OUTPUT || kind == LlmErrorKind.REFUSAL || isRequestError()

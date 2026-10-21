@@ -198,4 +198,18 @@ class ProcessingTest {
         )
         assertEquals(listOf("2026-10-14", "2026-10-10"), daysToDigest(convs, madrid))
     }
+
+    @Test fun `un 400 o 413 es de esa conversación y cuenta como intento, 404, clave, cuota y servidor paran la cola`() {
+        fun err(code: Int) = httpError(HttpReply(code, """{"error":{"type":"invalid_request_error"}}""", null))
+        listOf(400, 413, 422).forEach {
+            assertTrue("$it", err(it).isRequestError())
+            assertTrue("$it", err(it).countsAsAttempt())
+        }
+        listOf(401, 403, 404, 408, 429, 500, 503).forEach {
+            assertFalse("$it", err(it).isRequestError())
+            assertFalse("$it", err(it).countsAsAttempt())
+        }
+        assertTrue(LlmException(LlmErrorKind.BAD_OUTPUT, "x").countsAsAttempt())
+        assertFalse(LlmException(LlmErrorKind.SERVER, "URL no válida", retryable = false).isRequestError())
+    }
 }

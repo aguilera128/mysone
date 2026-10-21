@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ai
 
+import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
@@ -17,8 +18,11 @@ import kotlinx.serialization.encodeToString
 /** Resumen de cada día anterior a hoy (§7.6). */
 class DigestBuilder(private val container: AppContainer) {
 
-    /** Hasta [MAX_PER_PASS] días sin resumen, los más recientes. Devuelve cuántos ha creado. */
-    suspend fun buildMissing(cfg: AiConfig, zone: ZoneId = Time.zone()): Int {
+    /**
+     * Hasta [MAX_PER_PASS] días sin resumen, los más recientes. Devuelve cuántos ha creado. Los ajustes se leen
+     * antes de cada día: si la IA se apaga o cambia de proveedor a mitad, no sale nada más.
+     */
+    suspend fun buildMissing(zone: ZoneId = Time.zone()): Int {
         val db = container.db
         val today = Time.today(zone)
         val todayStart = Time.dayBounds(today, zone).first
@@ -28,9 +32,9 @@ class DigestBuilder(private val container: AppContainer) {
         val days = daysToDigest(convs, zone).filter { db.digests().get(it) == null }.take(MAX_PER_PASS)
         var built = 0
         for (day in days) {
+            val cfg = aiConfig(container) ?: break
             val (from, to) = Time.dayBounds(day, zone)
-            val dayConvs = convs.filter { it.startedAt in from until to && it.state == ConvState.DONE && !it.isNoise }
-                .sortedBy { it.startedAt }
+            val dayConvs = convs.filter { it.startedAt in from until to }.digestable().sortedBy { it.startedAt }
             val tasks = db.tasks().observeInDay(from, to).first()
             val out: DigestOut = try {
                 cfg.client.completeJson(
@@ -45,11 +49,23 @@ class DigestBuilder(private val container: AppContainer) {
             }
             val summary = out.summary.clean(1500) ?: continue
             val highlights = out.highlights.mapNotNull { it.clean(200) }.take(6)
-            db.digests().upsert(DailyDigest(day, summary, AppJson.encodeToString(highlights), System.currentTimeMillis()))
-            built++
+            // Olvidar, borrar o "Borrar todo" durante la llamada cambian las conversaciones del día (o sus
+            // resúmenes): entonces este resumen lleva lo borrado y no se guarda. Las otras escriben en su propia
+            // transacción, así que o se ven aquí o se llevan también el resumen.
+            val saved = db.withWriteTransaction {
+                val now = db.conversations().inRange(from, to, Int.MAX_VALUE).digestable()
+                if (now.fingerprint() != dayConvs.fingerprint()) return@withWriteTransaction false
+                db.digests().upsert(DailyDigest(day, summary, AppJson.encodeToString(highlights), System.currentTimeMillis()))
+                true
+            }
+            if (saved) built++
         }
         return built
     }
+
+    private fun List<Conversation>.digestable() = filter { it.state == ConvState.DONE && !it.isNoise }
+
+    private fun List<Conversation>.fingerprint() = map { it.id to it.processedAt }.toSet()
 
     private companion object {
         const val MAX_PER_PASS = 7

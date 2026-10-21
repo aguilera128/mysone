@@ -18,6 +18,10 @@ import java.text.Normalizer
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 
 /**
@@ -25,6 +29,53 @@ import kotlinx.serialization.encodeToString
  * Citas en la respuesta: marcadores literales [c:123] (id de conversación). La UI los convierte en chips.
  */
 class AskEngine(private val container: AppContainer) {
+
+    // Pregunta en curso y último fallo viven aquí (todo el proceso) y no en el ViewModel de Preguntar, que muere al
+    // cambiar de pestaña mientras la pregunta sigue en appScope: al volver no se perdería el "pensando" ni el error.
+    private val _pending = MutableStateFlow<String?>(null)
+
+    /** Pregunta en curso ("pensando"). */
+    val pending: StateFlow<String?> = _pending.asStateFlow()
+
+    /** La última que falló, para el aviso y "Reintentar". */
+    class Failure(val question: String, val error: Throwable)
+
+    private val _failure = MutableStateFlow<Failure?>(null)
+    val failure: StateFlow<Failure?> = _failure.asStateFlow()
+
+    @Volatile private var checkedInterrupted = false
+
+    /** No bloquea, y una cada vez. La respuesta llega a chat_message; el estado, a [pending] y [failure]. */
+    fun submit(question: String) {
+        val q = question.trim()
+        if (q.isEmpty() || !_pending.compareAndSet(null, q)) return
+        _failure.value = null
+        container.appScope.launch {
+            try {
+                ask(q).onFailure { _failure.value = Failure(q, it) }
+            } finally {
+                _pending.value = null
+            }
+        }
+    }
+
+    fun retry() {
+        _failure.value?.let { submit(it.question) }
+    }
+
+    fun dismissFailure() {
+        _failure.value = null
+    }
+
+    /** Una vez por proceso: si murió a mitad de una pregunta, esta sigue guardada sin respuesta y se ofrece repetirla. */
+    suspend fun flagInterrupted() {
+        if (checkedInterrupted) return
+        checkedInterrupted = true
+        val last = container.db.chat().recent(1).firstOrNull() ?: return
+        if (last.role == ChatRole.USER && _pending.value == null && _failure.value == null) {
+            _failure.value = Failure(last.text, IllegalStateException("Pregunta sin respuesta"))
+        }
+    }
 
     /** Guarda pregunta y respuesta en chat_message. */
     suspend fun ask(question: String): Result<ChatMessage> {

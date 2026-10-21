@@ -118,8 +118,10 @@ private fun MemoryContent(
             )
             return@Scaffold
         }
+        // Claves por sección: al confirmar, los dos Flows de Room emiten por separado y el mismo recuerdo puede
+        // estar un frame en las dos listas; con la misma clave, LazyColumn lanza IllegalArgumentException.
         LazyColumn(modifier, contentPadding = PaddingValues(bottom = 96.dp)) {
-            item {
+            item(key = "intro") {
                 Text(
                     stringResource(R.string.memory_intro),
                     style = MaterialTheme.typography.bodyMedium,
@@ -128,8 +130,8 @@ private fun MemoryContent(
                 )
             }
             if (suggested.isNotEmpty()) {
-                item { SectionHeader(stringResource(R.string.memory_section_suggested)) }
-                items(suggested, key = { it.id }) { f ->
+                item(key = "suggested") { SectionHeader(stringResource(R.string.memory_section_suggested)) }
+                items(suggested, key = { "s${it.id}" }) { f ->
                     FactRow(f, onClick = { editing = f }, onOpenConversation = onOpenConversation) {
                         FilledTonalButton(onClick = { onConfirm(f) }) { Text(stringResource(R.string.memory_confirm)) }
                         TextButton(onClick = { delete(f) }) { Text(stringResource(R.string.tasks_dismiss)) }
@@ -137,8 +139,8 @@ private fun MemoryContent(
                 }
             }
             if (confirmed.isNotEmpty()) {
-                item { SectionHeader(stringResource(R.string.memory_section_confirmed)) }
-                items(confirmed, key = { it.id }) { f ->
+                item(key = "confirmed") { SectionHeader(stringResource(R.string.memory_section_confirmed)) }
+                items(confirmed, key = { "c${it.id}" }) { f ->
                     FactRow(f, onClick = { editing = f }, onOpenConversation = onOpenConversation)
                 }
             }

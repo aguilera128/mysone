@@ -6,10 +6,8 @@ import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.ChatRole
 import dev.javieraguilera.mysone.ui.settings.isValidBaseUrl
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -53,40 +51,21 @@ class AskViewModel(private val container: AppContainer) : ViewModel() {
     val ai: StateFlow<AiSettings?> = container.settings.data.map { it.ai }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _pending = MutableStateFlow<String?>(null)
+    /** Pregunta en curso ("pensando"); sigue al cambiar de pestaña (vive en AskEngine). */
+    val pending: StateFlow<String?> = container.ask.pending
 
-    /** Pregunta en curso ("pensando"). */
-    val pending: StateFlow<String?> = _pending.asStateFlow()
+    val error: StateFlow<AiError?> = container.ask.failure.map { it?.let { f -> classifyAiError(f.error) } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _error = MutableStateFlow<AiError?>(null)
-    val error: StateFlow<AiError?> = _error.asStateFlow()
-
-    private var lastFailed: String? = null
-
-    fun ask(question: String) {
-        val q = question.trim()
-        if (q.isEmpty() || _pending.value != null) return
-        _error.value = null
-        _pending.value = q
-        // En appScope: si cambias de pestaña a mitad, la respuesta se guarda igual en el chat.
-        container.appScope.launch {
-            container.ask.ask(q)
-                .onSuccess { lastFailed = null }
-                .onFailure {
-                    lastFailed = q
-                    _error.value = classifyAiError(it)
-                }
-            _pending.value = null
-        }
+    init {
+        viewModelScope.launch { container.ask.flagInterrupted() }
     }
 
-    fun retry() {
-        lastFailed?.let(::ask)
-    }
+    fun ask(question: String) = container.ask.submit(question)
 
-    fun dismissError() {
-        _error.value = null
-    }
+    fun retry() = container.ask.retry()
+
+    fun dismissError() = container.ask.dismissFailure()
 
     fun enableAi() {
         viewModelScope.launch { container.settings.update { it.copy(ai = it.ai.copy(enabled = true)) } }

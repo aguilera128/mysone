@@ -1,5 +1,8 @@
 package dev.javieraguilera.mysone.asr
 
+import dev.javieraguilera.mysone.data.ConvSource
+import dev.javieraguilera.mysone.data.ConvState
+import dev.javieraguilera.mysone.data.Conversation
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -240,6 +243,19 @@ class AsrLogicTest {
         assertEquals(1_000L, pollDelayMs(waiting = DownloadWait.WIFI, observed = true))
         assertEquals(30_000L, pollDelayMs(waiting = DownloadWait.WIFI, observed = false))
         assertEquals(30_000L, pollDelayMs(waiting = DownloadWait.NETWORK, observed = false))
+    }
+
+    // --- Audio ya importado ---
+
+    @Test fun `con la misma fecha de modificación solo es el mismo audio si dura lo mismo`() {
+        val end = 1_792_058_400_000L
+        fun imported(id: Long, ms: Long) = Conversation(id = id, startedAt = end - ms, endedAt = end, source = ConvSource.IMPORT, state = ConvState.DONE)
+        val conv2 = imported(1, 15_875)
+        val conv1 = imported(2, 24_425)
+        assertEquals(null, sameAudio(listOf(conv2), 24_425)) // conv1 con la fecha de conv2: otro audio
+        assertEquals(conv1, sameAudio(listOf(conv2, conv1), 24_425))
+        assertEquals(conv1, sameAudio(listOf(conv1), 24_900)) // la cabecera redondea
+        assertEquals(null, sameAudio(emptyList(), 24_425)) // la suya se borró
     }
 
     private fun sha256(data: ByteArray) =

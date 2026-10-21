@@ -123,9 +123,9 @@ interface ConversationDao {
     @Query("SELECT id FROM conversation WHERE source = 'IMPORT'")
     fun observeImportIds(): Flow<List<Long>>
 
-    /** La importada de un fichero con esa fecha de modificación: termina justo en ella (§5.5). */
-    @Query("SELECT * FROM conversation WHERE source = 'IMPORT' AND endedAt = :endedAt ORDER BY id LIMIT 1")
-    suspend fun importEndingAt(endedAt: Long): Conversation?
+    /** Las importadas de ficheros con esa fecha de modificación: terminan justo en ella (§5.5). */
+    @Query("SELECT * FROM conversation WHERE source = 'IMPORT' AND endedAt = :endedAt ORDER BY id")
+    suspend fun importsEndingAt(endedAt: Long): List<Conversation>
 
     @Query("SELECT state, COUNT(*) AS count FROM conversation GROUP BY state")
     fun countByState(): Flow<List<StateCount>>

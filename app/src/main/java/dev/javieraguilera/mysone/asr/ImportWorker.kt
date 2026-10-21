@@ -109,7 +109,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (pieces.isEmpty()) return R.string.asr_import_error_no_speech
 
         val durationMs = total * 1000 / SAMPLE_RATE
-        // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella.
+        // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella y su duración.
         val startedAt = (AudioImporter.lastModified(applicationContext, uri) ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
         // En una transacción: que nadie vea la conversación READY a medio llenar. Y si entretanto se ha hecho

@@ -199,7 +199,7 @@
     <string name="models_import_where_day">Lo tienes el %1$s, a las %2$s.</string>
     <string name="models_import_where_yesterday">Lo tienes en el día de ayer, a las %1$s.</string>
     <string name="models_import_duplicate_title">Ya importaste este audio</string>
-    <string name="models_import_duplicate_message">Hay una conversación importada de un audio con la misma fecha de modificación. %1$s Si lo importas otra vez, la tendrás repetida.</string>
+    <string name="models_import_duplicate_message">Hay una conversación importada de un audio con la misma fecha de modificación y la misma duración. %1$s Si lo importas otra vez, la tendrás repetida.</string>
     <string name="models_import_duplicate_confirm">Importar otra vez</string>
 
     <!-- Ajustes › Privacidad -->

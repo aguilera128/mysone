@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.AlarmAdd
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.AlertDialog
@@ -79,6 +80,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.R
@@ -86,7 +88,9 @@ import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
+import dev.javieraguilera.mysone.tasks.ReminderReceiver
 import dev.javieraguilera.mysone.ui.components.EmptyState
+import dev.javieraguilera.mysone.ui.settings.Note
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -100,9 +104,17 @@ fun TasksScreen(highlightTaskId: Long?, onOpenConversation: (Long, Long?) -> Uni
     val pending by vm.pending.collectAsStateWithLifecycle()
     val suggested by vm.suggested.collectAsStateWithLifecycle()
     val done by vm.done.collectAsStateWithLifecycle()
+    // Sin notificaciones los recordatorios no se ven (ni se dan por avisados): se mira al volver a la pantalla.
+    val context = LocalContext.current
+    var notificationsOff by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        notificationsOff = !ReminderReceiver.canNotify(context)
+        onPauseOrDispose { }
+    }
     TasksContent(
         lists = listOf(pending, suggested, done),
         highlightTaskId = highlightTaskId,
+        notificationsOff = notificationsOff,
         actions = TaskActions(
             accept = vm::accept,
             dismiss = vm::dismiss,
@@ -131,7 +143,7 @@ private val TABS = listOf(R.string.tasks_tab_pending, R.string.tasks_tab_suggest
 
 /** [lists]: pendientes, sugeridas y hechas, en el orden de las pestañas. */
 @Composable
-private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, actions: TaskActions) {
+private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, actions: TaskActions, notificationsOff: Boolean = false) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val listStates = List(TABS.size) { rememberLazyListState() }
     var highlight by remember { mutableStateOf(highlightTaskId) }
@@ -182,6 +194,14 @@ private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, ac
                         },
                     )
                 }
+            }
+            if (notificationsOff) {
+                Note(
+                    stringResource(R.string.tasks_notifications_off),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    icon = Icons.Outlined.NotificationsOff,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             val items = lists[tab]
             if (items.isEmpty()) {

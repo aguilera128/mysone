@@ -64,6 +64,7 @@
     <string name="tasks_yesterday_at">Ayer, %1$s</string>
     <string name="tasks_day_at">%1$s, %2$s</string>
     <string name="tasks_deleted">Tarea borrada</string>
+    <string name="tasks_notifications_off">Las notificaciones de Mysone están desactivadas: los recordatorios no se verán. Actívalas en los ajustes del sistema.</string>
     <string name="tasks_undo">Deshacer</string>
     <string name="tasks_empty_pending_title">Nada pendiente</string>
     <string name="tasks_empty_pending">Cuando digas «recuérdame…» o aceptes una sugerencia, aparecerá aquí. También puedes crear un recordatorio con el botón +.</string>

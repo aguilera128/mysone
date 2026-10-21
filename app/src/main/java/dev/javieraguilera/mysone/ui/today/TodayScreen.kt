@@ -406,10 +406,16 @@ internal fun StatusCard(
                         Button(onClick = onOpenModels) { Text(stringResource(R.string.today_action_download_model)) }
                     ListeningStatus.NeedsPermission ->
                         Button(onClick = onStart) { Text(stringResource(R.string.today_action_grant)) }
-                    is ListeningStatus.Error ->
+                    is ListeningStatus.Error -> {
                         Button(onClick = onStart) { Text(stringResource(R.string.action_retry)) }
-                    ListeningStatus.Off -> Button(onClick = onStart) {
-                        Text(stringResource(if (listeningEnabled) R.string.today_action_resume else R.string.today_action_listen))
+                        // Parada por el sistema: también se puede dejar así, sin el aviso de reanudar.
+                        if (listeningEnabled) OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
+                    }
+                    ListeningStatus.Off -> {
+                        Button(onClick = onStart) {
+                            Text(stringResource(if (listeningEnabled) R.string.today_action_resume else R.string.today_action_listen))
+                        }
+                        if (listeningEnabled) OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     }
                 }
                 ForgetButton(onForget)

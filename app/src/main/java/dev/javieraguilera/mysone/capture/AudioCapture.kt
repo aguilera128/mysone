@@ -16,6 +16,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.concurrent.thread
+import kotlin.math.abs
 import kotlin.math.log10
 
 /** Trozo de voz con tiempos absolutos (epoch ms). */
@@ -167,7 +168,9 @@ class AudioCapture(
                 fed += n
                 emit(vad.accept(frame))
                 speaking = vad.isSpeaking
-                if (!speaking && fed - syncedAt >= SR * 3600L) resync()
+                // Cada hora, o en cuanto el reloj de pared salta (hora cambiada a mano, hora automática): si no, el
+                // cierre por silencio compararía horas de los dos relojes y partiría o juntaría conversaciones.
+                if (!speaking && (fed - syncedAt >= SR * 3600L || clockJumped(System.currentTimeMillis(), t0, fed))) resync()
                 if (counted >= SR / 4) { // nivel 4 veces por segundo
                     onLevel(level(sumSq / counted))
                     sumSq = 0.0
@@ -201,6 +204,11 @@ class AudioCapture(
         private const val TAG = "AudioCapture"
         const val SR = 16_000
         private const val FRAME = 512
+
+        private const val CLOCK_JUMP_MS = 5_000L
+
+        /** El reloj de pared [now] se ha separado del de muestras (muestra 0 en [t0], [fed] leídas) más de 5 s. */
+        internal fun clockJumped(now: Long, t0: Long, fed: Long): Boolean = abs(now - (t0 + fed * 1000 / SR)) > CLOCK_JUMP_MS
 
         /** RMS² a 0..1 en escala de -60 a 0 dBFS (en lineal, la voz a un metro sería casi siempre ≈ 0). */
         fun level(meanSquare: Double): Float =

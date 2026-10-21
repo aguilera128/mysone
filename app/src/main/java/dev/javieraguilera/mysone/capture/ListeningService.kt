@@ -42,6 +42,7 @@ import dev.javieraguilera.mysone.data.ListeningGap
 import dev.javieraguilera.mysone.data.PendingAudio
 import dev.javieraguilera.mysone.data.Segment
 import io.sentry.Sentry
+import java.io.File
 import java.util.concurrent.Executors
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -106,6 +107,9 @@ class ListeningService : Service() {
     private var acquired = false
     @Volatile private var draining = false
 
+    /** Ha llegado "detener": START/RESUME, que se atienden antes, no llegan a abrir el micro. */
+    @Volatile private var stopRequested = false
+
     @Volatile private var silenced = false
     @Volatile private var pending = 0
     @Volatile private var fragmentsToday = 0
@@ -116,6 +120,7 @@ class ListeningService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         scope.launch { db.pendingAudio().count().collect { pending = it } }
         scope.launch {
             while (true) {
@@ -129,6 +134,10 @@ class ListeningService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
         val action = intent?.action
+        when (action) {
+            ACTION_STOP -> stopRequested = true
+            ACTION_START, ACTION_RESUME -> stopRequested = false
+        }
         // Lo primero: después de startForegroundService el sistema da unos segundos (02 §2).
         // STOP llega con startService y no lo necesita.
         if (action != ACTION_STOP && !enterForeground()) {
@@ -140,6 +149,12 @@ class ListeningService : Service() {
             } else {
                 ListeningController.publish(Error(getString(R.string.capture_error_start)))
                 ResumeNotifier.show(this)
+            }
+            // Ninguna orden llegará a command(): lo que dejó a medias un proceso que murió escuchando (la
+            // conversación OPEN, el hueco KILLED) se recoge ya, no cuando el usuario vuelva a escuchar.
+            if (!recovered) {
+                recovered = true
+                c.appScope.launch { recoverDeadSession(applicationContext) }
             }
             stopSelf(startId)
             return START_NOT_STICKY
@@ -172,6 +187,7 @@ class ListeningService : Service() {
 
     /** Solo llega aquí sin pasar por detener si lo para el sistema: el latido queda para el hueco KILLED. */
     override fun onDestroy() {
+        running = false
         val cap = capture
         capture = null
         val job = session
@@ -243,6 +259,8 @@ class ListeningService : Service() {
             if (st is TranscriberState.NoModel) return giveUp(NeedsModel)
             return giveUp(Error((st as? TranscriberState.Error)?.message ?: getString(R.string.capture_error_model)))
         }
+        // "Detener" mientras cargaba el modelo (segundos con Parakeet): espera en la cola y no hay que abrir el micro.
+        if (stopRequested) return
         val ch = openSession()
         val cap = AudioCapture(
             context = this,
@@ -288,10 +306,17 @@ class ListeningService : Service() {
     }
 
     private suspend fun stop() {
-        c.settings.update { it.copy(listeningEnabled = false) }
+        // Lo primero, soltar el micro: si después falla algo (DataStore con el disco lleno), al menos no graba.
+        stopCapture()
+        try {
+            c.settings.update { it.copy(listeningEnabled = false) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "No se guarda «detenida»: ${e.javaClass.simpleName}")
+        }
         ResumeNotifier.cancel(this)
         clearPause()
-        stopCapture()
         // Off cuando ya está en la BD todo lo que deja la escucha (lo último que oyó la VAD, la conversación
         // cerrada y el hueco): "Borrar todo" espera a este estado y después no se escribe nada más que él no vea.
         chunks?.close()
@@ -365,6 +390,8 @@ class ListeningService : Service() {
             tracker.close()
             if (gap != null) openGapLocked(gap)
         }
+        // Detenida a propósito y con su hueco ya escrito: si el sistema mata el proceso drenando, no es KILLED.
+        prefs.edit { remove(KEY_ALIVE) }
         if (drain && asrJob != null) {
             draining = true
             refreshNotification()
@@ -382,7 +409,6 @@ class ListeningService : Service() {
         asrJob = null
         wake = null
         asrThread = null
-        prefs.edit { remove(KEY_ALIVE) }
     }
 
     private suspend fun enqueueLocked(chunk: VoiceChunk) {
@@ -567,10 +593,15 @@ class ListeningService : Service() {
          */
         internal val book = Mutex()
 
+        /** Hay una instancia del servicio (de onCreate a onDestroy), escuche o no. */
+        @Volatile internal var running = false
+            private set
+
         /**
          * Lo que dejó a medias un proceso que murió escuchando (§5.1, §5.3): hueco KILLED desde el último latido y
          * conversaciones OPEN del micro → READY, que así se procesan. La llaman la primera orden de cada servicio
-         * y, sin servicio, el arranque del móvil y la actualización de la app: si no, esperaría a que se reanude.
+         * y, sin servicio, el arranque del móvil, la actualización de la app y el mantenimiento: si no, esperaría
+         * a que se reanude.
          */
         internal suspend fun recoverDeadSession(context: Context) = book.withLock {
             val c = context.applicationContext.container
@@ -584,6 +615,22 @@ class ListeningService : Service() {
             ConversationTracker(c.db.conversations(), { 0L }) { finishConversation(c, it) }.recoverOrphans()
         }
 
+        /**
+         * Sin escucha que la transcriba, la cola no guarda audio para siempre (§5.2, §10): lo que terminó antes de
+         * [before] se borra sin transcribir y sus conversaciones se procesan con lo que tengan.
+         */
+        // ponytail: se descarta en vez de transcribirlo desde el mantenimiento; si se pierde texto que importa,
+        // que MaintenanceWorker cargue el modelo (como ImportWorker) con el móvil cargando.
+        internal suspend fun dropStalePending(context: Context, before: Long) = book.withLock {
+            val c = context.applicationContext.container
+            val stale = c.db.pendingAudio().all().filter { it.endedAt < before }
+            stale.forEach {
+                c.db.pendingAudio().delete(it.id)
+                File(it.path).delete()
+            }
+            stale.map { it.conversationId }.distinct().forEach { finishConversation(c, it) }
+        }
+
         /** "Borrar todo": sin latido ni pausa que dejen después un hueco anterior al borrado o una reanudación. */
         internal fun forgetSession(context: Context) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
@@ -591,6 +638,17 @@ class ListeningService : Service() {
                 remove(KEY_PAUSED_UNTIL)
             }
             context.getSystemService(AlarmManager::class.java).cancel(resumeAlarm(context))
+        }
+
+        /**
+         * Sin servicio (un reinicio borra las alarmas) y con una pausa que aún no ha acabado: vuelve a poner la
+         * alarma de reanudar, que avisa a su hora. true si es así.
+         */
+        internal fun rearmPause(context: Context): Boolean {
+            val until = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_PAUSED_UNTIL, 0)
+            if (until <= System.currentTimeMillis()) return false
+            scheduleResume(context, until)
+            return true
         }
 
         private fun scheduleResume(context: Context, until: Long) {

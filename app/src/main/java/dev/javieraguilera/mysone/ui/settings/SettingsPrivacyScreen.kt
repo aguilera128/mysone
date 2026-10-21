@@ -83,7 +83,8 @@ class SettingsPrivacyViewModel(private val container: AppContainer) : ViewModel(
         if (ListeningController.status.value.isActive()) {
             ListeningController.stop(container.app)
             // Off llega cuando lo que deja la escucha (cola, conversación y hueco) ya está en la BD: así se borra también.
-            withTimeoutOrNull(5_000) { ListeningController.status.first { !it.isActive() } }
+            // Con margen: si estaba cargando el modelo (Iniciando), "detener" espera a que acabe la carga.
+            withTimeoutOrNull(30_000) { ListeningController.status.first { !it.isActive() } }
         }
         container.data.deleteAll()
     }

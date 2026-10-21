@@ -13,17 +13,25 @@ class ReminderScheduler(private val context: Context) {
     private val alarms = context.getSystemService(AlarmManager::class.java)
     private val mutex = Mutex()
 
-    /** Pone la alarma si la tarea está OPEN con remindAt futuro; si ya no es un recordatorio, la quita. */
+    /**
+     * Pone la alarma si la tarea está OPEN con remindAt futuro; si ya no es un recordatorio, la quita. Con la hora
+     * recién pasada y sin avisar (el minuto actual, o una tarea de la IA que llega tarde), avisa en un segundo.
+     */
     fun schedule(task: TaskItem) {
-        val at = task.remindAt
-        if (task.state != TaskState.OPEN || at == null) {
+        val remindAt = task.remindAt
+        if (task.state != TaskState.OPEN || remindAt == null) {
             cancel(task.id)
             return
         }
         val pi = ReminderReceiver.pending(context, ReminderReceiver.ACTION_FIRE, task.id)
-        if (at <= System.currentTimeMillis()) {
-            alarms.cancel(pi) // ya pasó: si toca, lo avisa rescheduleAll
-            return
+        val now = System.currentTimeMillis()
+        val at = when (plan(task, now)) {
+            Plan.ALARM -> remindAt
+            Plan.NOTIFY_NOW -> now + 1_000 // ReminderReceiver lo marca como pasado si toca
+            Plan.NONE -> {
+                alarms.cancel(pi)
+                return
+            }
         }
         if (alarms.canScheduleExactAlarms()) {
             try {
@@ -50,8 +58,8 @@ class ReminderScheduler(private val context: Context) {
             when (plan(task, now)) {
                 Plan.ALARM -> schedule(task)
                 Plan.NOTIFY_NOW -> {
-                    ReminderReceiver.notify(context, task, late = true)
-                    tasks.update(task.copy(notifiedAt = now))
+                    // Sin publicar, sin marcar: la próxima pasada lo vuelve a intentar.
+                    if (ReminderReceiver.notify(context, task, late = true)) tasks.update(task.copy(notifiedAt = now))
                 }
                 Plan.NONE -> Unit
             }

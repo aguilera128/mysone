@@ -1,6 +1,7 @@
 package dev.javieraguilera.mysone.tasks
 
 import android.Manifest
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -40,8 +41,8 @@ class ReminderReceiver : BroadcastReceiver() {
                         if (task.state != TaskState.OPEN || (task.notifiedAt ?: 0) >= at) return@launch
                         // Alarma vieja de una hora que se cambió sin reprogramar.
                         if (at - now > EARLY_MS) return@launch c.reminders.schedule(task)
-                        notify(app, task, late = now - at > LATE_MS)
-                        tasks.update(task.copy(notifiedAt = now))
+                        // Sin publicar (notificaciones desactivadas), sin marcar: rescheduleAll lo reintenta durante 24 h.
+                        if (notify(app, task, late = now - at > LATE_MS)) tasks.update(task.copy(notifiedAt = now))
                     }
                     ACTION_DONE -> {
                         tasks.setState(id, TaskState.DONE)
@@ -80,9 +81,10 @@ class ReminderReceiver : BroadcastReceiver() {
                 FLAGS,
             )
 
-        /** Solo el texto de la tarea: nunca texto de la conversación (§10). */
-        fun notify(context: Context, task: TaskItem, late: Boolean) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        /** Solo el texto de la tarea: nunca texto de la conversación (§10). false si no se puede mostrar. */
+        fun notify(context: Context, task: TaskItem, late: Boolean): Boolean {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+            if (!canNotify(context)) return false
             val id = task.id
             val open = PendingIntent.getActivity(context, id.toInt(), MainActivity.intent(context, "tasks:$id"), FLAGS)
             val notification = NotificationCompat.Builder(context, MysoneApp.CHANNEL_REMINDERS)
@@ -100,6 +102,15 @@ class ReminderReceiver : BroadcastReceiver() {
                 .addAction(0, context.getString(R.string.reminder_action_snooze), pending(context, ACTION_SNOOZE, id))
                 .build()
             NotificationManagerCompat.from(context).notify(TAG, id.toInt(), notification)
+            return true
+        }
+
+        /** Permiso, notificaciones de la app y canal de recordatorios activos. */
+        fun canNotify(context: Context): Boolean {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+            val nm = NotificationManagerCompat.from(context)
+            return nm.areNotificationsEnabled() &&
+                nm.getNotificationChannel(MysoneApp.CHANNEL_REMINDERS)?.importance != NotificationManager.IMPORTANCE_NONE
         }
 
         fun dismiss(context: Context, taskId: Long) {

@@ -26,6 +26,7 @@
     <string name="capture_action_resume">Reanudar</string>
     <string name="capture_action_stop">Detener</string>
     <string name="capture_action_open_app">Abrir Mysone</string>
+    <string name="capture_action_dont_resume">No reanudar</string>
 
     <string name="capture_resume_title">La escucha se ha detenido</string>
     <string name="capture_resume_text">Toca para reanudar la escucha</string>

@@ -30,4 +30,13 @@ class PendingQueueTest {
         assertFalse(ListeningController.overlaps(forgotten, since - 10_000, since)) // terminó antes
         assertFalse(ListeningController.overlaps(LongRange.EMPTY, 0, Long.MAX_VALUE)) // sin olvidos
     }
+
+    @Test fun `el reloj de la captura se resincroniza si el de pared salta más de 5 s`() {
+        val t0 = 1_000_000L
+        val fed = 16_000L * 60 // un minuto de muestras
+        val expected = t0 + 60_000
+        assertFalse(AudioCapture.clockJumped(expected + 4_000, t0, fed))
+        assertTrue(AudioCapture.clockJumped(expected + 10 * 60_000, t0, fed)) // hora adelantada a mano
+        assertTrue(AudioCapture.clockJumped(expected - 6_000, t0, fed)) // y atrasada
+    }
 }

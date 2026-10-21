@@ -9,6 +9,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.container
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -20,6 +21,12 @@ class MaintenanceWorker(context: Context, params: WorkerParameters) : CoroutineW
         val c = app.container
         val now = System.currentTimeMillis()
 
+        // Sin servicio: lo que dejó a medias un proceso que murió escuchando sin que volviera nadie (fabricante,
+        // "Detener" del administrador de tareas), y el audio que nadie va a transcribir.
+        if (!ListeningService.running) {
+            ListeningService.recoverDeadSession(app)
+            ListeningService.dropStalePending(app, now - PENDING_MAX_AGE_MS)
+        }
         remindResumeIfStopped(app)
         val known = c.db.pendingAudio().all().map { File(it.path).name }.toSet()
         orphans(pendingDir(app).listFiles()?.toList().orEmpty(), known, now).forEach { it.delete() }
@@ -43,6 +50,7 @@ class MaintenanceWorker(context: Context, params: WorkerParameters) : CoroutineW
         private const val PREFS = "maintenance"
         private const val KEY_RETENTION_AT = "retentionAt"
         private const val DAY_MS = 24 * 3_600_000L
+        private const val PENDING_MAX_AGE_MS = DAY_MS
 
         /** Margen para no borrar un trozo que la captura acaba de escribir y aún no tiene fila en pending_audio. */
         private const val ORPHAN_AGE_MS = 10 * 60_000L

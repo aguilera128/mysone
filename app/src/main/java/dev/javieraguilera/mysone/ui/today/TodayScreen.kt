@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -266,7 +267,11 @@ internal fun TodayContent(
 private fun DayStrip(selectedDay: String, onSelect: (String) -> Unit, onPickOther: () -> Unit) {
     val today = LocalDate.parse(Time.today())
     val days = remember(today) { (0 until STRIP_DAYS).map { today.minusDays(it.toLong()).toString() } }
+    val state = rememberLazyListState()
+    // La fila se queda en su primer chip visible: al pasar la medianoche el «Hoy» nuevo entraba por la izquierda, fuera de la vista.
+    LaunchedEffect(today) { if (selectedDay == today.toString()) state.scrollToItem(0) }
     LazyRow(
+        state = state,
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -406,17 +411,18 @@ internal fun StatusCard(
             ) {
                 when (status) {
                     // Con el micro ocupado la escucha sigue en marcha: las mismas acciones que la notificación (§5.1).
-                    is ListeningStatus.Listening, ListeningStatus.MicBusy -> {
-                        FilledTonalButton(onClick = { onPause(15) }) { Text(stringResource(R.string.today_action_pause_15)) }
-                        OutlinedButton(onClick = { onPause(60) }) { Text(stringResource(R.string.today_action_pause_60)) }
+                    // Preparando, las mismas sin poder pausar todavía: así «Detener» no cambia de sitio al acabar de
+                    // cargar el modelo y un toque que iba a detener no cae en «Pausar 15 min».
+                    is ListeningStatus.Listening, ListeningStatus.MicBusy, ListeningStatus.Starting -> {
+                        val canPause = status != ListeningStatus.Starting
+                        FilledTonalButton(onClick = { onPause(15) }, enabled = canPause) { Text(stringResource(R.string.today_action_pause_15)) }
+                        OutlinedButton(onClick = { onPause(60) }, enabled = canPause) { Text(stringResource(R.string.today_action_pause_60)) }
                         OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     }
                     is ListeningStatus.Paused -> {
                         Button(onClick = onResume) { Text(stringResource(R.string.today_action_resume)) }
                         OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     }
-                    ListeningStatus.Starting ->
-                        OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
                     ListeningStatus.NeedsModel ->
                         Button(onClick = onOpenModels) { Text(stringResource(R.string.today_action_download_model)) }
                     ListeningStatus.NeedsPermission ->

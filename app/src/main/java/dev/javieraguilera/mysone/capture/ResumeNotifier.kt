@@ -9,9 +9,10 @@ import dev.javieraguilera.mysone.MysoneApp
 import dev.javieraguilera.mysone.R
 
 /**
- * "La escucha se ha detenido. Toca para reanudar" (§6). Tocarla arranca el servicio con
- * `getForegroundService`: la interacción con la notificación concede el micro "mientras se usa",
- * que es lo único que funciona tras un arranque del móvil o si el sistema mató el servicio (02 §3, §4).
+ * "La escucha se ha detenido" con "Reanudar" (§6). La acción arranca el servicio con `getForegroundService`: la
+ * interacción con la notificación concede el micro "mientras se usa", que es lo único que funciona tras un arranque
+ * del móvil o si el sistema mató el servicio (02 §3, §4). Con la pantalla bloqueada pide desbloquear antes, y tocar
+ * la notificación abre la app (que también lo pide): nadie vuelve a grabar sin el PIN.
  */
 object ResumeNotifier {
     private const val ID = 1002
@@ -43,12 +44,12 @@ object ResumeNotifier {
             .setSmallIcon(R.drawable.ic_stat_mysone)
             .setContentTitle(context.getString(R.string.capture_resume_title))
             .setContentText(context.getString(R.string.capture_resume_text))
-            .setContentIntent(start)
+            .setContentIntent(ListeningNotification.openApp(context))
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setSilent(prefs.getBoolean(KEY_ALERTED, false))
+            .addAction(ListeningNotification.resumeAction(context, start))
             .addAction(0, context.getString(R.string.capture_action_dont_resume), stop)
-            .apply { ListeningNotification.openApp(context)?.let { addAction(0, context.getString(R.string.capture_action_open_app), it) } }
             .build()
         // Sin permiso de notificaciones el sistema la descarta sin más.
         context.getSystemService(NotificationManager::class.java).notify(ID, n)

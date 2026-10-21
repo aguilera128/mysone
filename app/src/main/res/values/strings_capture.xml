@@ -25,11 +25,10 @@
     <string name="capture_action_pause_60">Pausar 1 h</string>
     <string name="capture_action_resume">Reanudar</string>
     <string name="capture_action_stop">Detener</string>
-    <string name="capture_action_open_app">Abrir Mysone</string>
     <string name="capture_action_dont_resume">No reanudar</string>
 
     <string name="capture_resume_title">La escucha se ha detenido</string>
-    <string name="capture_resume_text">Toca para reanudar la escucha</string>
+    <string name="capture_resume_text">Pulsa «Reanudar» para seguir escuchando</string>
 
     <string name="capture_error_start">No se ha podido iniciar la escucha. Vuelve a intentarlo desde la app.</string>
     <string name="capture_error_mic">No se ha podido abrir el micrófono</string>

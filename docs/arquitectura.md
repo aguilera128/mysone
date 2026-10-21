@@ -312,7 +312,8 @@ class AppContainer(val app: Application) {
   `PAUSE` (extra minutos), `RESUME`. `START_STICKY`.
 - `onStartCommand`: **lo primero** `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_MICROPHONE)`
   dentro de `try/catch` (`ForegroundServiceStartNotAllowedException`, `SecurityException`, …). Si falla:
-  estado `Error`, `ResumeNotifier.show()` ("Toca para reanudar la escucha") y `stopSelf()`.
+  estado `Error`, `ResumeNotifier.show()` ("La escucha se ha detenido" con la acción "Reanudar", que pide
+  desbloquear el móvil) y `stopSelf()`.
 - Intent nulo (reinicio sticky): si `listeningEnabled`, intentar reanudar; si el micro no abre,
   `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido.
 - Comprobaciones antes de capturar: permiso `RECORD_AUDIO` (si no: `NeedsPermission`), modelo

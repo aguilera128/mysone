@@ -10,7 +10,8 @@ import dev.javieraguilera.mysone.core.Time
 
 /**
  * Notificación del servicio en primer plano (§5.1). Solo estado y contadores: nunca texto transcrito.
- * Las acciones usan `getService`: el servicio ya está en primer plano mientras se ve la notificación.
+ * Las acciones usan `getService`: el servicio ya está en primer plano mientras se ve la notificación. Pausar y
+ * detener van sin desbloquear; reanudar, que vuelve a abrir el micro, pide desbloquear ([resumeAction]).
  */
 object ListeningNotification {
     const val ID = 1001
@@ -43,7 +44,7 @@ object ListeningNotification {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         if (finishing) return b.build()
         if (status is ListeningStatus.Paused) {
-            b.addAction(0, context.getString(R.string.capture_action_resume), service(context, RC_RESUME, ListeningController.ACTION_RESUME))
+            b.addAction(resumeAction(context, service(context, RC_RESUME, ListeningController.ACTION_RESUME)))
         } else {
             b.addAction(0, context.getString(R.string.capture_action_pause_15), service(context, RC_PAUSE_15, ListeningController.ACTION_PAUSE, 15))
             b.addAction(0, context.getString(R.string.capture_action_pause_60), service(context, RC_PAUSE_60, ListeningController.ACTION_PAUSE, 60))
@@ -51,6 +52,12 @@ object ListeningNotification {
         b.addAction(0, context.getString(R.string.capture_action_stop), service(context, RC_STOP, ListeningController.ACTION_STOP))
         return b.build()
     }
+
+    /** "Reanudar" que, con la pantalla bloqueada, pide desbloquear: si no, cualquiera podría volver a grabar sin el PIN. */
+    internal fun resumeAction(context: Context, intent: PendingIntent): NotificationCompat.Action =
+        NotificationCompat.Action.Builder(0, context.getString(R.string.capture_action_resume), intent)
+            .setAuthenticationRequired(true)
+            .build()
 
     internal fun openApp(context: Context): PendingIntent? =
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {

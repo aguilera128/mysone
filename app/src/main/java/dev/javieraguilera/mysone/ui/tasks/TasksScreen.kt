@@ -226,6 +226,7 @@ private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, ac
     editing?.let { t ->
         TaskDialog(
             initial = t,
+            current = lists.firstNotNullOfOrNull { l -> l.find { it.id == t.id } } ?: t,
             onSave = { text, remindAt ->
                 editing = null
                 actions.edit(t, text, remindAt)
@@ -404,21 +405,31 @@ private const val STEP_NONE = 0
 private const val STEP_DATE = 1
 private const val STEP_TIME = 2
 
-/** Crear ([initial] null) o editar una tarea: texto y recordatorio con los pickers de Material 3. */
+/**
+ * Crear ([initial] null) o editar una tarea: texto y recordatorio con los pickers de Material 3. [current]: la tarea
+ * como está ahora; mientras no se toque el aviso se enseña el suyo (la notificación puede posponerlo con esto abierto).
+ */
 @Composable
 private fun TaskDialog(
     initial: TaskItem?,
     onSave: (String, Long?) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
+    current: TaskItem? = initial,
 ) {
     var text by rememberSaveable { mutableStateOf(initial?.text.orEmpty()) }
-    var remindAt by rememberSaveable { mutableStateOf(initial?.remindAt) }
+    var picked by rememberSaveable { mutableStateOf<Long?>(null) }
+    var touched by rememberSaveable { mutableStateOf(false) }
+    val remindAt = if (touched) picked else current?.remindAt
+    val setRemindAt = { at: Long? ->
+        picked = at
+        touched = true
+    }
     var pickedDate by rememberSaveable { mutableStateOf<Long?>(null) }
     var step by rememberSaveable { mutableIntStateOf(STEP_NONE) }
     val now = System.currentTimeMillis()
     // Un aviso ya pasado se puede conservar tal cual; uno nuevo o cambiado tiene que ser futuro.
-    val reminderInPast = remindAt.let { it != null && it <= now && it != initial?.remindAt }
+    val reminderInPast = remindAt.let { it != null && it <= now && it != current?.remindAt }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -439,7 +450,7 @@ private fun TaskDialog(
                         leadingIcon = { Icon(Icons.Outlined.Alarm, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
                     )
                     if (remindAt != null) {
-                        IconButton(onClick = { remindAt = null }) {
+                        IconButton(onClick = { setRemindAt(null) }) {
                             Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.tasks_remove_reminder))
                         }
                     }
@@ -500,7 +511,7 @@ private fun TaskDialog(
             title = { Text(stringResource(R.string.tasks_pick_time)) },
             confirmButton = {
                 TextButton(onClick = {
-                    remindAt = pickerToEpoch(pickedDate ?: pickerDateOf(now), state.hour, state.minute)
+                    setRemindAt(pickerToEpoch(pickedDate ?: pickerDateOf(now), state.hour, state.minute))
                     step = STEP_NONE
                 }) { Text(stringResource(R.string.action_accept)) }
             },

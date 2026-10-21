@@ -16,6 +16,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.edit
+import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.TranscriberState
@@ -48,6 +49,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
@@ -82,7 +84,6 @@ class ListeningService : Service() {
         },
     )
     private val commands = Mutex()
-    private val book = Mutex()
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
     private val queue by lazy { PendingQueue(this, db.pendingAudio()) }
     private val tracker by lazy {
@@ -151,7 +152,8 @@ class ListeningService : Service() {
                     clearPause()
                     listen()
                 }
-                ACTION_RESUME -> {
+                // También la alarma de fin de pausa: tras detener o "Borrar todo" ya no hay nada que reanudar.
+                ACTION_RESUME -> if (c.settings.current().listeningEnabled) {
                     clearPause()
                     listen()
                 }
@@ -211,7 +213,7 @@ class ListeningService : Service() {
     }
 
     /** Primera orden de esta instancia: deja en orden lo que dejó a medias un proceso anterior. */
-    private suspend fun recover() = book.withLock { recoverDeadSession(this) }
+    private suspend fun recover() = recoverDeadSession(this)
 
     private suspend fun restart() {
         if (!c.settings.current().listeningEnabled) return
@@ -273,12 +275,7 @@ class ListeningService : Service() {
             putLong(KEY_PAUSED_UNTIL, until)
             remove(KEY_ALIVE)
         }
-        val am = getSystemService(AlarmManager::class.java)
-        if (am.canScheduleExactAlarms()) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm())
-        } else {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm())
-        }
+        scheduleResume(this, until)
         book.withLock { openGapLocked(GapReason.PAUSED) }
         ListeningController.publish(Paused(until))
         refreshNotification()
@@ -287,15 +284,8 @@ class ListeningService : Service() {
     private fun clearPause() {
         pausedUntil = 0
         prefs.edit { remove(KEY_PAUSED_UNTIL) }
-        getSystemService(AlarmManager::class.java).cancel(resumeAlarm())
+        getSystemService(AlarmManager::class.java).cancel(resumeAlarm(this))
     }
-
-    private fun resumeAlarm() = PendingIntent.getService(
-        this,
-        RC_RESUME_ALARM,
-        ListeningController.intent(this, ACTION_RESUME),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
 
     private suspend fun stop() {
         c.settings.update { it.copy(listeningEnabled = false) }
@@ -396,6 +386,8 @@ class ListeningService : Service() {
     }
 
     private suspend fun enqueueLocked(chunk: VoiceChunk) {
+        // Dicho antes de pulsar "Olvidar" y aún en la VAD o en el canal: no se guarda.
+        if (ListeningController.isForgotten(chunk.startMs, chunk.endMs)) return
         // ponytail: el tope cuenta la cola entera con una suma por trozo; basta con miles de filas.
         if (queue.totalDurationMs() >= MAX_QUEUE_MS) return openGapLocked(GapReason.BATTERY)
         closeGapLocked(GapReason.BATTERY)
@@ -436,14 +428,25 @@ class ListeningService : Service() {
         }
         queue.bumpAttempts(p) // antes de decodificar: si el nativo mata el proceso, no se repite sin fin
         val text = queue.read(p)?.let { c.transcriber.transcribe(it) }.orEmpty()
-        book.withLock {
-            // "Olvidar" pudo quitar el trozo mientras se transcribía: entonces su texto no se guarda.
-            if (text.isNotBlank() && queue.isQueued(p)) {
-                val seg = Segment(conversationId = p.conversationId, startedAt = p.startedAt, endedAt = p.endedAt, text = text)
-                c.ai.onSegmentTranscribed(seg.copy(id = db.segments().insert(seg)))
+        // Segmento y fin del pendiente juntos y sin cancelar a medias: si no, al detener o morir entre los dos, el
+        // trozo se transcribiría otra vez en la próxima escucha (segmento duplicado y otro recordatorio rápido).
+        withContext(NonCancellable) {
+            book.withLock {
+                val seg = db.withWriteTransaction {
+                    // "Olvidar" pudo quitar el trozo mientras se transcribía: entonces su texto no se guarda.
+                    val saved = if (text.isNotBlank() && queue.isQueued(p)) {
+                        val s = Segment(conversationId = p.conversationId, startedAt = p.startedAt, endedAt = p.endedAt, text = text)
+                        s.copy(id = db.segments().insert(s))
+                    } else {
+                        null
+                    }
+                    db.pendingAudio().delete(p.id)
+                    saved
+                }
+                queue.deleteFile(p)
+                seg?.let(c.ai::onSegmentTranscribed)
+                finishLocked(p.conversationId)
             }
-            queue.remove(p)
-            finishLocked(p.conversationId)
         }
     }
 
@@ -557,14 +560,19 @@ class ListeningService : Service() {
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_MS = 4 * 3_600_000L
         private const val LOW_BATTERY = 20
-        private val recovery = Mutex()
+
+        /**
+         * Conversaciones, cola y huecos se tocan siempre con este cerrojo, también desde fuera del servicio
+         * ("olvidar", borrar y "Borrar todo" en DataManager): así nadie escribe a medias de otro.
+         */
+        internal val book = Mutex()
 
         /**
          * Lo que dejó a medias un proceso que murió escuchando (§5.1, §5.3): hueco KILLED desde el último latido y
          * conversaciones OPEN del micro → READY, que así se procesan. La llaman la primera orden de cada servicio
          * y, sin servicio, el arranque del móvil y la actualización de la app: si no, esperaría a que se reanude.
          */
-        internal suspend fun recoverDeadSession(context: Context) = recovery.withLock {
+        internal suspend fun recoverDeadSession(context: Context) = book.withLock {
             val c = context.applicationContext.container
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             // Hay latido sin "detener" ni pausa: el servicio murió escuchando.
@@ -575,6 +583,31 @@ class ListeningService : Service() {
             }
             ConversationTracker(c.db.conversations(), { 0L }) { finishConversation(c, it) }.recoverOrphans()
         }
+
+        /** "Borrar todo": sin latido ni pausa que dejen después un hueco anterior al borrado o una reanudación. */
+        internal fun forgetSession(context: Context) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+                remove(KEY_ALIVE)
+                remove(KEY_PAUSED_UNTIL)
+            }
+            context.getSystemService(AlarmManager::class.java).cancel(resumeAlarm(context))
+        }
+
+        private fun scheduleResume(context: Context, until: Long) {
+            val am = context.getSystemService(AlarmManager::class.java)
+            if (am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm(context))
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm(context))
+            }
+        }
+
+        private fun resumeAlarm(context: Context) = PendingIntent.getService(
+            context,
+            RC_RESUME_ALARM,
+            ListeningController.intent(context, ACTION_RESUME),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
     }
 }
 

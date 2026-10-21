@@ -88,6 +88,26 @@ object AudioImporter {
             }.sortedBy { it.first ?: 0L }.map { it.second }
         }
 
+    /** Veces que se ha hecho "Borrar todo" en este proceso: ImportWorker no guarda lo que empezó antes. */
+    @Volatile internal var wipes = 0
+        private set
+
+    /**
+     * "Borrar todo", antes de vaciar la BD: cancela las importaciones en marcha y en cola y suelta el permiso de
+     * leer sus ficheros. La que esté a punto de guardar lo ve en [wipes] dentro de su transacción.
+     */
+    suspend fun cancelAll(context: Context) {
+        wipes++
+        withContext(Dispatchers.IO) { WorkManager.getInstance(context).cancelUniqueWork(TAG).result.get() }
+        // Solo las importaciones piden permisos persistentes.
+        context.contentResolver.persistedUriPermissions.forEach {
+            try {
+                context.contentResolver.releasePersistableUriPermission(it.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: SecurityException) {
+            }
+        }
+    }
+
     /** "Borrar todo": fuera la lista de importaciones terminadas y sus nombres de fichero. */
     fun forgetHistory(context: Context) {
         WorkManager.getInstance(context).pruneWork()

@@ -116,14 +116,6 @@ interface ConversationDao {
     @Query("DELETE FROM conversation WHERE id = :id")
     suspend fun delete(id: Long)
 
-    /** Borra las conversaciones cerradas que se han quedado sin segmentos ni audio pendiente. */
-    @Query(
-        "DELETE FROM conversation WHERE state != 'OPEN' " +
-            "AND NOT EXISTS (SELECT 1 FROM segment WHERE segment.conversationId = conversation.id) " +
-            "AND NOT EXISTS (SELECT 1 FROM pending_audio WHERE pending_audio.conversationId = conversation.id)",
-    )
-    suspend fun deleteEmpty(): Int
-
     @Query("SELECT * FROM conversation ORDER BY startedAt")
     suspend fun all(): List<Conversation>
 

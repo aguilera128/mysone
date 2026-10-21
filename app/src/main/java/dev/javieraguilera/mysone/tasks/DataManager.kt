@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.asr.AudioImporter
+import dev.javieraguilera.mysone.capture.ListeningController
+import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.capture.ResumeNotifier
 import dev.javieraguilera.mysone.core.AppJson
 import dev.javieraguilera.mysone.core.Time
@@ -12,17 +14,18 @@ import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.data.ChatMessage
 import dev.javieraguilera.mysone.data.ChatRole
-import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.DailyDigest
 import dev.javieraguilera.mysone.data.Fact
+import dev.javieraguilera.mysone.data.FactState
 import dev.javieraguilera.mysone.data.ListeningGap
 import dev.javieraguilera.mysone.data.Segment
 import dev.javieraguilera.mysone.data.TaskItem
+import dev.javieraguilera.mysone.data.TaskState
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
@@ -52,48 +55,65 @@ class DataManager(private val container: AppContainer) {
     private val db get() = container.db
 
     /**
-     * Segmentos y cola de los últimos [minutes], y lo derivado (06 §6.1.3): las conversaciones tocadas
-     * pierden tareas, facts y resumen y vuelven a READY para reprocesarse con lo que queda; las vaciadas se borran.
+     * Segmentos y cola de los últimos [minutes], y lo derivado de ellos (06 §6.1.3): las conversaciones tocadas
+     * pierden el resumen y las tareas y facts que salían de lo olvidado (lo que el usuario aceptó de lo que queda
+     * se conserva), y vuelven a READY para reprocesarse con lo que queda; las vaciadas se borran.
+     *
+     * Con el cerrojo de la captura y en una transacción: el servicio no encola ni guarda un trozo a medias de esto,
+     * y lo que la VAD o el canal aún traigan del intervalo se descarta al llegar. Una llamada a la IA en curso ve
+     * la conversación cambiada al ir a guardar y no escribe nada.
      */
     suspend fun forgetLast(minutes: Int) {
         val now = System.currentTimeMillis()
         val since = now - minutes * MINUTE_MS
-        val pending = db.pendingAudio().since(since)
-        // Un trozo dura como mucho 25 s: los que terminan después de since empezaron después de since - 1 min.
-        val segments = db.segments().inRange(since - MINUTE_MS, Long.MAX_VALUE).filter { it.endedAt > since }
-        val touched = (segments.map { it.conversationId } + pending.map { it.conversationId }).toSet()
-
-        pending.forEach { pendingFile(it.path).delete() }
-        db.pendingAudio().deleteSince(since)
-        db.segments().deleteSince(since)
-        for (id in touched) {
-            val c = db.conversations().get(id) ?: continue
-            dropDerived(id)
-            val lastEnd = db.segments().textForConversation(id).maxOfOrNull { it.endedAt } ?: c.endedAt
-            db.conversations().update(
-                c.copy(
-                    endedAt = lastEnd,
-                    state = if (c.state == ConvState.OPEN) ConvState.OPEN else ConvState.READY,
-                    title = null, summary = null, keyPoints = null, isNoise = false,
-                    processAttempts = 0, processedAt = null, lastError = null,
-                ),
-            )
+        ListeningController.markForgotten(since, now)
+        val (touched, files) = ListeningService.book.withLock {
+            db.withWriteTransaction {
+                val pending = db.pendingAudio().since(since)
+                // Un trozo dura como mucho 25 s: los que terminan después de since empezaron después de since - 1 min.
+                val segments = db.segments().inRange(since - MINUTE_MS, Long.MAX_VALUE).filter { it.endedAt > since }
+                val touched = (segments.map { it.conversationId } + pending.map { it.conversationId }).toSet()
+                db.pendingAudio().deleteSince(since)
+                db.segments().deleteSince(since)
+                for (id in touched) {
+                    val left = db.segments().textForConversation(id)
+                    val leftPending = db.pendingAudio().forConversation(id)
+                    val starts = left.map { it.startedAt } + leftPending.map { it.startedAt }
+                    if (starts.isEmpty()) {
+                        // Vaciada, también la abierta: la voz que siga abre otra en vez de heredar sus horas.
+                        db.tasks().forConversation(id).forEach { container.reminders.cancel(it.id) }
+                        db.conversations().delete(id)
+                        continue
+                    }
+                    dropDerived(id, since, left)
+                    val end = (left.map { it.endedAt } + leftPending.map { it.endedAt }).max()
+                    db.conversations().resetForgotten(id, starts.min(), end)
+                }
+                deleteDigests(since, now)
+                dropChat(touched)
+                touched to pending.map { it.path }
+            }
         }
-        db.conversations().deleteEmpty()
-        deleteDigests(since, now)
-        dropChat(touched)
+        files.forEach { pendingFile(it).delete() }
         // Las tocadas que siguen vivas se vuelven a resumir sin lo olvidado (las OPEN y las borradas se saltan).
         touched.forEach { container.ai.onConversationReady(it) }
     }
 
     /** En cascada: segmentos, cola, tareas y facts. También sus ficheros de audio, sus alarmas y el resumen del día. */
     suspend fun deleteConversation(id: Long) {
-        val c = db.conversations().get(id) ?: return
-        db.tasks().forConversation(id).forEach { container.reminders.cancel(it.id) }
-        db.pendingAudio().forConversation(id).forEach { pendingFile(it.path).delete() }
-        db.conversations().delete(id)
-        deleteDigests(c.startedAt, c.endedAt)
-        dropChat(setOf(id))
+        // Con el cerrojo de la captura: ningún trozo nuevo de la cola se queda sin borrar su fichero.
+        val files = ListeningService.book.withLock {
+            db.withWriteTransaction {
+                val c = db.conversations().get(id) ?: return@withWriteTransaction emptyList()
+                db.tasks().forConversation(id).forEach { container.reminders.cancel(it.id) }
+                val files = db.pendingAudio().forConversation(id).map { it.path }
+                db.conversations().delete(id)
+                deleteDigests(c.startedAt, c.endedAt)
+                dropChat(setOf(id))
+                files
+            }
+        }
+        files.forEach { pendingFile(it).delete() }
     }
 
     /** Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. */
@@ -123,9 +143,14 @@ class DataManager(private val container: AppContainer) {
      * "Toca para reanudar", que si no seguirían en Hoy y MaintenanceWorker volvería a avisar (§6).
      */
     suspend fun deleteAll() {
-        db.tasks().withReminder().forEach { container.reminders.cancel(it.id) }
-        db.clearAllTables()
-        withContext(Dispatchers.IO) { pendingDir(container.app).listFiles()?.forEach { it.delete() } }
+        // Antes que la BD: una importación a medias guardaría su conversación después del borrado.
+        AudioImporter.cancelAll(container.app)
+        ListeningService.book.withLock {
+            db.tasks().withReminder().forEach { container.reminders.cancel(it.id) }
+            db.clearAllTables()
+            withContext(Dispatchers.IO) { pendingDir(container.app).listFiles()?.forEach { it.delete() } }
+        }
+        ListeningService.forgetSession(container.app)
         AudioImporter.forgetHistory(container.app)
         container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
         ResumeNotifier.cancel(container.app)
@@ -138,12 +163,14 @@ class DataManager(private val container: AppContainer) {
         db.segments().deleteOlderThan(cutoff)
     }
 
-    private suspend fun dropDerived(conversationId: Long) {
-        db.tasks().forConversation(conversationId).forEach {
+    /** Lo sacado de lo olvidado ([fromForgotten]) y los facts sugeridos; el reprocesado rehace las sugerencias. */
+    private suspend fun dropDerived(conversationId: Long, since: Long, left: List<Segment>) {
+        val leftText = normalized(left.joinToString(" ") { it.text })
+        db.tasks().forConversation(conversationId).filter { fromForgotten(it, leftText, since) }.forEach {
             container.reminders.cancel(it.id)
             db.tasks().delete(it.id)
         }
-        db.facts().observeForConversation(conversationId).first().forEach { db.facts().delete(it.id) }
+        db.facts().forConversation(conversationId).filter { it.state == FactState.SUGGESTED }.forEach { db.facts().delete(it.id) }
     }
 
     /**
@@ -157,15 +184,7 @@ class DataManager(private val container: AppContainer) {
     }
 
     /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello. */
-    private suspend fun deleteDigests(fromMs: Long, toMs: Long) {
-        db.withWriteTransaction {
-            usePrepared("DELETE FROM daily_digest WHERE day >= ? AND day <= ?") {
-                it.bindText(1, Time.dayKey(fromMs))
-                it.bindText(2, Time.dayKey(toMs))
-                it.step()
-            }
-        }
-    }
+    private suspend fun deleteDigests(fromMs: Long, toMs: Long) = db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
 
     /** Todos los trozos viven en pending/; se resuelve por nombre, guarde la captura la ruta absoluta o relativa. */
     private fun pendingFile(path: String) = File(pendingDir(container.app), File(path).name)
@@ -189,5 +208,20 @@ class DataManager(private val container: AppContainer) {
 
         /** Instante antes del cual se borra la transcripción; null = no borrar (0 días). */
         fun retentionCutoff(now: Long, days: Int): Long? = if (days <= 0) null else now - days * DAY_MS
+
+        /**
+         * Tarea que sale de lo olvidado: sugerida (el reprocesado la rehace), con su cita fuera de lo que queda
+         * ([leftText], ya con [normalized]) o, sin cita, creada después de [since]. Las demás, aceptadas, editadas
+         * o descartadas por el usuario con lo que sigue en la conversación, se quedan.
+         */
+        internal fun fromForgotten(t: TaskItem, leftText: String, since: Long): Boolean = when {
+            t.state == TaskState.SUGGESTED -> true
+            t.sourceQuote == null -> t.createdAt >= since
+            else -> normalized(t.sourceQuote) !in leftText
+        }
+
+        private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
+
+        internal fun normalized(s: String) = s.lowercase().replace(NON_WORD, " ").trim()
     }
 }

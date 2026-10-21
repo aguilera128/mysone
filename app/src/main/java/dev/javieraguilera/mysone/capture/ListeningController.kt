@@ -49,6 +49,20 @@ object ListeningController {
         _status.value = s
     }
 
+    // Lo último que se ha olvidado, [desde, cuándo se pulsó]. Basta con el último: un trozo llega a la cola como
+    // mucho unos 30 s tarde (VAD y canal) y cualquier olvido cubre al menos los 5 min anteriores.
+    @Volatile private var forgotten = LongRange.EMPTY
+
+    /** "Olvidar" desde [since]: lo que la captura aún tenga de antes de [at] se descarta al llegar a la cola. */
+    internal fun markForgotten(since: Long, at: Long) {
+        forgotten = since..at
+    }
+
+    /** El trozo [startMs, endMs] tiene voz del intervalo olvidado. */
+    internal fun isForgotten(startMs: Long, endMs: Long): Boolean = overlaps(forgotten, startMs, endMs)
+
+    internal fun overlaps(range: LongRange, startMs: Long, endMs: Long) = !range.isEmpty() && endMs > range.first && startMs < range.last
+
     internal fun intent(context: Context, action: String, minutes: Int = 0): Intent =
         Intent(context, ListeningService::class.java).setAction(action).putExtra(EXTRA_MINUTES, minutes)
 

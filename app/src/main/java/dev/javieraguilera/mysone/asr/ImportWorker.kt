@@ -34,6 +34,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val uri = inputData.getString(KEY_URI)?.toUri() ?: return Result.failure()
         val c = applicationContext.container
+        val wipes = AudioImporter.wipes
         applicationContext.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, applicationContext.getString(R.string.asr_import_channel_name), NotificationManager.IMPORTANCE_LOW),
         )
@@ -41,7 +42,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val error = try {
             if (c.transcriber.acquire()) {
                 try {
-                    import(uri, c)
+                    import(uri, c, wipes)
                 } finally {
                     c.transcriber.release()
                 }
@@ -69,8 +70,8 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
     }
 
-    /** Devuelve el id del texto de error, o null si se ha creado la conversación. */
-    private suspend fun import(uri: Uri, c: AppContainer): Int? {
+    /** Devuelve el id del texto de error, o null si se ha creado la conversación. [wipes]: el de AudioImporter al empezar. */
+    private suspend fun import(uri: Uri, c: AppContainer, wipes: Int): Int? {
         val pieces = ArrayList<Piece>()
         var total = 0L
         var shownAt = 0L
@@ -100,8 +101,10 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella.
         val startedAt = (AudioImporter.lastModified(applicationContext, uri) ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
-        // En una transacción: que nadie vea la conversación READY a medio llenar.
-        val id = c.db.withWriteTransaction {
+        // En una transacción: que nadie vea la conversación READY a medio llenar. Y si entretanto se ha hecho
+        // "Borrar todo", nada: o se ve aquí, o el borrado viene después y se lleva también esto.
+        val id = c.db.withWriteTransaction<Long?> {
+            if (AudioImporter.wipes != wipes) return@withWriteTransaction null
             val convId = c.db.conversations().insert(
                 Conversation(
                     startedAt = startedAt,
@@ -114,7 +117,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 c.db.segments().insert(Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text))
             }
             convId
-        }
+        } ?: return R.string.asr_import_cancelled
         this.startedAt = startedAt
         conversationId = id
         c.ai.onConversationReady(id)

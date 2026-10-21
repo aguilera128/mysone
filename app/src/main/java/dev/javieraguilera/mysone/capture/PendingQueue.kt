@@ -45,6 +45,11 @@ class PendingQueue(context: Context, private val dao: PendingAudioDao) {
 
     suspend fun remove(p: PendingAudio) {
         dao.delete(p.id)
+        deleteFile(p)
+    }
+
+    /** Solo el fichero, una vez borrada su fila. */
+    suspend fun deleteFile(p: PendingAudio) {
         withContext(Dispatchers.IO) { File(p.path).delete() }
     }
 

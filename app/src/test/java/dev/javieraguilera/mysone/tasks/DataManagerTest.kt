@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -79,5 +80,26 @@ class DataManagerTest {
         val result = MaintenanceWorker.orphans(listOf(queued, orphan, fresh, dir), setOf("a.pcm"), now)
 
         assertEquals(listOf<File>(orphan), result)
+    }
+
+    @Test fun `al olvidar solo se van las tareas que salen de lo olvidado`() {
+        val since = now - 5 * 60_000
+        val left = DataManager.normalized("Vale. ¿Me recuerdas el jueves enviar el presupuesto? Y comprar pan.")
+        fun task(state: String, quote: String?, createdAt: Long = now - day) =
+            TaskItem(text = "x", state = state, sourceQuote = quote, conversationId = 1, createdAt = createdAt)
+
+        // Aceptada, con su cita en lo que queda (aunque cambien mayúsculas y signos): se queda.
+        assertFalse(DataManager.fromForgotten(task(TaskState.OPEN, "me recuerdas el jueves, enviar el presupuesto"), left, since))
+        assertFalse(DataManager.fromForgotten(task(TaskState.DISMISSED, "Comprar pan"), left, since))
+        // La cita estaba en lo olvidado.
+        assertTrue(DataManager.fromForgotten(task(TaskState.OPEN, "llamar al banco mañana"), left, since))
+        assertTrue(DataManager.fromForgotten(task(TaskState.DONE, "llamar al banco"), left, since))
+        // Sugerida: el reprocesado la rehace.
+        assertTrue(DataManager.fromForgotten(task(TaskState.SUGGESTED, "comprar pan"), left, since))
+        // Sin cita: por la hora.
+        assertFalse(DataManager.fromForgotten(task(TaskState.OPEN, null, createdAt = since - 1), left, since))
+        assertTrue(DataManager.fromForgotten(task(TaskState.OPEN, null, createdAt = since), left, since))
+        // Sin nada que quede, todo lo citado se va.
+        assertTrue(DataManager.fromForgotten(task(TaskState.OPEN, "comprar pan"), "", since))
     }
 }

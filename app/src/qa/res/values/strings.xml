@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Instalada junto a la debug: que el lanzador, los permisos y las notificaciones digan cuál es. -->
+    <string name="app_name" translatable="false">Mysone QA</string>
+</resources>

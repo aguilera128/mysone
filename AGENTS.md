@@ -15,7 +15,7 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ANDROID_HOME="$LO
 Los tests instrumentados (`app/src/androidTest`) prueban los DAOs y el FTS5 sobre Room en memoria
 con `BundledSQLiteDriver`.
 
-Build `qa` (`./gradlew installQa`): la release con R8 y shrink, firmada con la clave debug, `dev.javieraguilera.mysone.qa` y sin depurable, con http:// permitido solo a `10.0.2.2` y `localhost` para probarla contra `tools/mock-llm.mjs`.
+Build `qa` (`./gradlew installQa`): la release con R8 y shrink, firmada con la clave debug, `dev.javieraguilera.mysone.qa` con el nombre «Mysone QA» y sin depurable, con http:// permitido solo a `10.0.2.2` y `localhost` para probarla contra `tools/mock-llm.mjs`.
 
 ### Audio de prueba y la «ñ»
 

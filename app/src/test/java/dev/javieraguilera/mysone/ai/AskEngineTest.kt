@@ -67,7 +67,7 @@ class AskEngineTest {
         assertEquals(listOf(LlmMessage("user", "u1\n\nu2")), alternating(msgs))
     }
 
-    @Test fun `el contexto de una respuesta son todas las conversaciones de las que sale algo`() {
+    @Test fun `lo que no se puede citar son las conversaciones de los resúmenes diarios y de los datos`() {
         fun conv(id: Long) = Conversation(id = id, startedAt = now, endedAt = now, source = ConvSource.MIC, state = ConvState.DONE)
         val ctx = AskContext(
             conversations = listOf(conv(1), conv(2)),
@@ -80,6 +80,6 @@ class AskEngineTest {
             facts = listOf(Fact(text = "f", state = FactState.CONFIRMED, conversationId = 5, createdAt = now)),
             digestSources = listOf(6, 1),
         )
-        assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L), ctx.sources)
+        assertEquals(listOf(1L, 5L, 6L), ctx.uncitable)
     }
 }

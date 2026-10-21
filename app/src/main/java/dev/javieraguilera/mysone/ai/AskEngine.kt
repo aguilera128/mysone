@@ -112,8 +112,9 @@ class AskEngine(private val container: AppContainer) {
             val answer = ChatMessage(
                 role = ChatRole.ASSISTANT,
                 text = text,
-                // Todas las que han podido llegar a la respuesta, no solo las citadas: con cualquiera de ellas se borra (§7.5).
-                citations = AppJson.encodeToString(context.sources),
+                // Las citadas y las que no se pueden citar: con cualquiera de ellas se borra (§7.5). No todas las del
+                // contexto: casi cualquier conversación reciente está en él y borrarla vaciaría el chat.
+                citations = AppJson.encodeToString((existing + context.uncitable).sorted()),
                 createdAt = System.currentTimeMillis(),
             )
             val saved = container.db.withWriteTransaction {
@@ -214,10 +215,12 @@ internal class AskContext(
     /** Conversaciones de los días de [digests]. */
     val digestSources: List<Long> = emptyList(),
 ) {
-    /** Conversaciones de las que sale algo de lo enviado: resúmenes, fragmentos, resúmenes diarios, tareas y datos. */
-    val sources: List<Long>
-        get() = (conversations.map { it.id } + segments.map { it.conversationId } + digestSources +
-            tasks.mapNotNull { it.conversationId } + facts.mapNotNull { it.conversationId }).distinct().sorted()
+    /**
+     * Conversaciones de las que sale algo de lo enviado sin `[c:ID]` con que citarlas: las de los resúmenes diarios y
+     * las de los datos. Resúmenes, fragmentos y tareas llevan su marcador, y la respuesta cita lo que usa de ellos.
+     */
+    val uncitable: List<Long>
+        get() = (digestSources + facts.mapNotNull { it.conversationId }).distinct().sorted()
 }
 
 private val WORD = Regex("[\\p{L}\\p{N}]+")

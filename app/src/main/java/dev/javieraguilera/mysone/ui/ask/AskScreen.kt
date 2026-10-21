@@ -211,7 +211,8 @@ private fun MessageList(messages: List<AskMessage>, pending: String?, onOpenConv
     // Si el motor ya guardó la pregunta, no se repite como pendiente.
     val showPendingQuestion = pending != null && messages.lastOrNull()?.let { it.fromUser && it.text == pending } != true
     val count = messages.size + (if (showPendingQuestion) 1 else 0) + (if (pending != null) 1 else 0)
-    LaunchedEffect(count) {
+    // También con el último id: la respuesta sustituye al "pensando" sin cambiar el recuento y quedaba medio tapada.
+    LaunchedEffect(count, messages.lastOrNull()?.id) {
         if (count > 0) state.animateScrollToItem(count - 1)
     }
     LazyColumn(

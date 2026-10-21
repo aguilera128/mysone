@@ -175,6 +175,11 @@ class ModelManager(private val context: Context) {
     /** Todos los ficheros en su sitio y con su tamaño. El hash se comprueba al instalar: solo llegan aquí verificados. */
     fun isInstalled(id: String): Boolean = catalog.find { it.id == id }?.hasFilesIn(modelDir(id)) == true
 
+    /** Ficheros borrados por fuera de la app: el estado deja de decir "Instalado" (si no, «Falta el modelo» no se ve). */
+    fun recheck(id: String) {
+        if (_installs.value[id] == ModelInstall.Installed && !isInstalled(id)) setState(id, ModelInstall.NotInstalled)
+    }
+
     fun modelDir(id: String): File = File(context.filesDir, "models/$id")
 
     /** RAM total redondeada hacia arriba: `totalMem` sale algo por debajo de la nominal (8 GB → ~7,4). */

@@ -262,14 +262,20 @@ class ListeningService : Service() {
         ResumeNotifier.cancel(this)
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return giveUp(NeedsPermission)
         val s = c.settings.current()
-        if (!c.models.isInstalled(s.asrModelId)) return giveUp(NeedsModel)
+        if (!c.models.isInstalled(s.asrModelId)) {
+            c.models.recheck(s.asrModelId)
+            return giveUp(NeedsModel)
+        }
         ListeningController.publish(Starting)
         refreshNotification()
         if (!acquired) acquired = c.transcriber.acquire()
         if (!acquired) {
             // Un modelo que no carga no se arregla reintentando: hace falta elegir otro en la app.
             val st = c.transcriber.state.value
-            if (st is TranscriberState.NoModel) return giveUp(NeedsModel)
+            if (st is TranscriberState.NoModel) {
+                c.models.recheck(s.asrModelId)
+                return giveUp(NeedsModel)
+            }
             return giveUp(Error((st as? TranscriberState.Error)?.message ?: getString(R.string.capture_error_model)))
         }
         // "Detener" mientras cargaba el modelo (segundos con Parakeet): espera en la cola y no hay que abrir el micro.

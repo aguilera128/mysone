@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ui.ask
 
+import dev.javieraguilera.mysone.ai.DiscardedAnswer
 import dev.javieraguilera.mysone.ai.LlmErrorKind
 import dev.javieraguilera.mysone.ai.LlmException
 import java.io.IOException
@@ -29,5 +30,6 @@ class AskTextTest {
         LlmErrorKind.entries.forEach { assertEquals(it.name, classifyAiError(llm(it)).name) }
         assertEquals(AiError.NETWORK, classifyAiError(IOException("timeout")))
         assertEquals(AiError.OTHER, classifyAiError(IllegalStateException()))
+        assertEquals(AiError.DISCARDED, classifyAiError(DiscardedAnswer()))
     }
 }

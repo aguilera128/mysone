@@ -196,8 +196,8 @@ class DataManager(private val container: AppContainer) {
     }
 
     /**
-     * Las respuestas de Preguntar copian lo que dijeron las conversaciones que citan (y las de los resúmenes diarios y
-     * datos que recibieron, que no se pueden citar): con ellas se van la respuesta y su pregunta. Si no, lo olvidado
+     * Las respuestas de Preguntar copian lo que dijeron las conversaciones que citan (y las de los resúmenes diarios
+     * que recibieron, que no se pueden citar): con ellas se van la respuesta y su pregunta. Si no, lo olvidado
      * seguiría en pantalla y volvería al proveedor con el historial (§7.5).
      */
     private suspend fun dropChat(conversationIds: Set<Long>) {

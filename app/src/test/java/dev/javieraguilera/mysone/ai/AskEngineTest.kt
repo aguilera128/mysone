@@ -67,7 +67,7 @@ class AskEngineTest {
         assertEquals(listOf(LlmMessage("user", "u1\n\nu2")), alternating(msgs))
     }
 
-    @Test fun `lo que no se puede citar son las conversaciones de los resúmenes diarios y de los datos`() {
+    @Test fun `lo que no se puede citar son las conversaciones de los resúmenes diarios y los datos llevan su cita`() {
         fun conv(id: Long) = Conversation(id = id, startedAt = now, endedAt = now, source = ConvSource.MIC, state = ConvState.DONE)
         val ctx = AskContext(
             conversations = listOf(conv(1), conv(2)),
@@ -77,9 +77,15 @@ class AskEngineTest {
                 TaskItem(text = "t", state = TaskState.OPEN, conversationId = 4, createdAt = now),
                 TaskItem(text = "a mano", state = TaskState.OPEN, createdAt = now),
             ),
-            facts = listOf(Fact(text = "f", state = FactState.CONFIRMED, conversationId = 5, createdAt = now)),
+            facts = listOf(
+                Fact(text = "Lucía cumple el 3", state = FactState.CONFIRMED, conversationId = 5, createdAt = now),
+                Fact(text = "dato a mano", state = FactState.CONFIRMED, createdAt = now),
+            ),
             digestSources = listOf(6, 1),
         )
-        assertEquals(listOf(1L, 5L, 6L), ctx.uncitable)
+        assertEquals(listOf(1L, 6L), ctx.uncitable)
+        val input = answerInput("¿Cuándo cumple Lucía?", ctx, now, madrid)
+        assertTrue("- Lucía cumple el 3 [c:5]\n" in input)
+        assertTrue("- dato a mano\n" in input)
     }
 }

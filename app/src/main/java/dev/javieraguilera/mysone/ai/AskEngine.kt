@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 
 /**
@@ -46,6 +48,10 @@ class AskEngine(private val container: AppContainer) {
 
     @Volatile private var checkedInterrupted = false
 
+    // Preguntar y "Cerrar" tocan el final del chat: de uno en uno. Si no, "Cerrar" y repetir enseguida la misma
+    // pregunta podía quitar la que el reintento está usando.
+    private val chatLock = Mutex()
+
     /** No bloquea, y una cada vez. La respuesta llega a chat_message; el estado, a [pending] y [failure]. */
     fun submit(question: String) {
         val q = question.trim()
@@ -53,7 +59,7 @@ class AskEngine(private val container: AppContainer) {
         _failure.value = null
         container.appScope.launch {
             try {
-                ask(q).onFailure { _failure.value = Failure(q, it) }
+                chatLock.withLock { ask(q) }.onFailure { _failure.value = Failure(q, it) }
             } finally {
                 _pending.value = null
             }
@@ -64,8 +70,17 @@ class AskEngine(private val container: AppContainer) {
         _failure.value?.let { submit(it.question) }
     }
 
+    /** "Cerrar": la pregunta que falló sale del chat. Si no, se quedaba para siempre sin respuesta ni "Reintentar". */
     fun dismissFailure() {
+        val f = _failure.value ?: return
         _failure.value = null
+        container.appScope.launch {
+            chatLock.withLock {
+                val chat = container.db.chat()
+                val last = chat.recent(1).firstOrNull() ?: return@withLock
+                if (last.role == ChatRole.USER && last.text == f.question.trim().take(MAX_QUESTION)) chat.delete(listOf(last.id))
+            }
+        }
     }
 
     /** Una vez por proceso: si murió a mitad de una pregunta, esta sigue guardada sin respuesta y se ofrece repetirla. */
@@ -85,9 +100,12 @@ class AskEngine(private val container: AppContainer) {
         val cfg = aiConfig(container) ?: return Result.failure(notConfigured())
         val chat = container.db.chat()
         val recent = chat.recent(HISTORY + 1).reversed()
-        // Reintento tras un fallo: la pregunta sigue guardada y sin respuesta, no se duplica.
-        val retry = recent.lastOrNull()?.let { it.role == ChatRole.USER && it.text == q } == true
-        val history = (if (retry) recent.dropLast(1) else recent).takeLast(HISTORY)
+        // Reintento tras un fallo: la pregunta sigue guardada y sin respuesta, no se duplica. Otra pregunta en vez de
+        // reintentar: la que se quedó sin respuesta sale del chat, como al cerrar el aviso.
+        val unanswered = recent.lastOrNull()?.takeIf { it.role == ChatRole.USER }
+        val retry = unanswered?.text == q
+        if (unanswered != null && !retry) chat.delete(listOf(unanswered.id))
+        val history = (if (unanswered != null) recent.dropLast(1) else recent).takeLast(HISTORY)
         if (!retry) chat.insert(ChatMessage(role = ChatRole.USER, text = q, createdAt = System.currentTimeMillis()))
         // Olvidar o borrar mientras llega la respuesta: lo que trae puede ser de lo borrado y no se guarda.
         val epoch = container.data.epoch
@@ -120,7 +138,7 @@ class AskEngine(private val container: AppContainer) {
             val saved = container.db.withWriteTransaction {
                 if (container.data.epoch != epoch) null else answer.copy(id = chat.insert(answer))
             }
-            saved?.let { Result.success(it) } ?: Result.failure(IllegalStateException("Datos cambiados durante la pregunta"))
+            saved?.let { Result.success(it) } ?: Result.failure(DiscardedAnswer())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -197,6 +215,9 @@ class AskEngine(private val container: AppContainer) {
     }
 }
 
+/** Se ha olvidado o borrado algo mientras llegaba la respuesta, que podía traerlo: no se guarda (no es un fallo del proveedor). */
+class DiscardedAnswer : IllegalStateException("Datos cambiados durante la pregunta")
+
 object Citations {
     /** `[c:123]` → 123 en el grupo 1. */
     val MARKER = Regex("""\[c:(\d+)]""")
@@ -216,11 +237,12 @@ internal class AskContext(
     val digestSources: List<Long> = emptyList(),
 ) {
     /**
-     * Conversaciones de las que sale algo de lo enviado sin `[c:ID]` con que citarlas: las de los resúmenes diarios y
-     * las de los datos. Resúmenes, fragmentos y tareas llevan su marcador, y la respuesta cita lo que usa de ellos.
+     * Conversaciones de las que sale algo de lo enviado sin `[c:ID]` con que citarlas: las de los resúmenes diarios.
+     * Resúmenes, fragmentos, tareas y datos llevan su marcador, y la respuesta cita lo que usa de ellos. Los datos
+     * confirmados van siempre (hasta 100): si contaran todos, borrar una conversación con un dato vaciaría el chat.
      */
     val uncitable: List<Long>
-        get() = (digestSources + facts.mapNotNull { it.conversationId }).distinct().sorted()
+        get() = digestSources.distinct().sorted()
 }
 
 private val WORD = Regex("[\\p{L}\\p{N}]+")
@@ -274,7 +296,7 @@ internal fun planInput(question: String, history: List<ChatMessage>, now: Long, 
 internal fun answerInput(question: String, ctx: AskContext, now: Long, zone: ZoneId): String = buildString {
     appendLine("<ahora>${Time.dateTimeLong(now, zone)} (${Time.toLocalDateTime(now, zone)}), zona ${zone.id}</ahora>")
     appendLine("<datos>")
-    ctx.facts.forEach { appendLine("- ${it.text}") }
+    ctx.facts.forEach { f -> appendLine("- ${f.text}${f.conversationId?.let { " [c:$it]" }.orEmpty()}") }
     appendLine("</datos>")
     appendLine("<tareas_pendientes>")
     ctx.tasks.forEach { t ->

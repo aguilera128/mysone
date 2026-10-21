@@ -492,9 +492,12 @@ programan. El procesado completo posterior recibe esas tareas como "ya registrad
    solo con el contexto; si no está, decirlo; español; breve; citar con `[c:ID]` tras cada afirmación;
    fechas relativas respecto a "ahora") + historial reciente + mensaje con el contexto y la pregunta.
 4. Se guardan pregunta y respuesta en `chat_message`, con `citations` = IDs citados que existan, más las
-   conversaciones de los resúmenes diarios y de los datos del contexto (no llevan `[c:ID]`: lo que salga de ellos no
-   se puede citar). Borrar u olvidar una conversación borra las respuestas cuyo `citations` la incluye y su pregunta;
-   no todas las de su contexto, que con hasta 60 conversaciones del rango vaciaría el chat casi siempre.
+   conversaciones de los resúmenes diarios del contexto (no llevan `[c:ID]`: lo que salga de ellos no se puede
+   citar). Tareas y datos llevan el `[c:ID]` de su conversación. Borrar u olvidar una conversación borra las
+   respuestas cuyo `citations` la incluye y su pregunta; no todas las de su contexto, que con hasta 60 conversaciones
+   del rango (y los 100 datos confirmados, que van siempre) vaciaría el chat casi siempre.
+5. Si falla, la pregunta queda guardada para "Reintentar"; al cerrar el aviso o hacer otra pregunta, sale del chat.
+   Si se olvida o borra algo mientras llega, la respuesta se descarta y el aviso lo dice.
 Sin IA configurada: la pantalla lo explica y ofrece la búsqueda local.
 
 ### 7.6 Resumen diario (`DigestBuilder`)

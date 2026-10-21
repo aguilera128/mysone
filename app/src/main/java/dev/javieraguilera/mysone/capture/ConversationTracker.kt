@@ -41,10 +41,15 @@ class ConversationTracker(
             .also { openId = it }
     }
 
-    /** Temporizador: cierra la abierta si lleva un corte entero sin voz. */
+    /**
+     * Temporizador: cierra la abierta si lleva un corte entero sin voz, o si el reloj de pared ha retrocedido por
+     * detrás de su final (hora cambiada a mano o automática): si no, seguiría abierta lo que se ha atrasado más el
+     * corte. Con un salto así AudioCapture también resincroniza: lo siguiente va con la hora nueva, en otra.
+     */
     suspend fun closeIfIdle(nowMs: Long) {
         val open = current() ?: return
-        if (nowMs - open.endedAt >= gapMs()) markReady(open.id)
+        val idle = nowMs - open.endedAt
+        if (idle >= gapMs() || idle < -AudioCapture.CLOCK_JUMP_MS) markReady(open.id)
     }
 
     /** Detener, error o fin del servicio. */

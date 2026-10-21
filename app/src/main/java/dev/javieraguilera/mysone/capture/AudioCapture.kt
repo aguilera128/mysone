@@ -205,7 +205,8 @@ class AudioCapture(
         const val SR = 16_000
         private const val FRAME = 512
 
-        private const val CLOCK_JUMP_MS = 5_000L
+        /** Separación entre el reloj de pared y el de muestras que se toma por cambio de hora (y no por deriva). */
+        internal const val CLOCK_JUMP_MS = 5_000L
 
         /** El reloj de pared [now] se ha separado del de muestras (muestra 0 en [t0], [fed] leídas) más de 5 s. */
         internal fun clockJumped(now: Long, t0: Long, fed: Long): Boolean = abs(now - (t0 + fed * 1000 / SR)) > CLOCK_JUMP_MS

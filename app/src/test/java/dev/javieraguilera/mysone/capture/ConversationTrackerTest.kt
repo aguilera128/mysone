@@ -68,6 +68,15 @@ class ConversationTrackerTest {
         assertNotEquals(id, tracker.assign(T + 5 * S + 4 * MIN + S, T + 5 * MIN))
     }
 
+    @Test fun `si el reloj retrocede tras la abierta el temporizador la cierra sin esperar a la hora vieja`() = runTest {
+        val id = tracker.assign(T + 29 * MIN, T + 29 * MIN + 10 * S) // reloj adelantado 29 min
+        tracker.closeIfIdle(T + 29 * MIN + 10 * S - 4 * S) // deriva de pocos segundos entre relojes: no es un salto
+        assertEquals(ConvState.OPEN, conv(id).state)
+        tracker.closeIfIdle(T + 30 * S) // puesto en hora
+        assertEquals(ConvState.READY, conv(id).state)
+        assertEquals(listOf(id), ready)
+    }
+
     @Test fun `el temporizador sin conversación abierta no hace nada`() = runTest {
         tracker.closeIfIdle(T)
         tracker.close()

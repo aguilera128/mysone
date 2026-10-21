@@ -379,7 +379,11 @@ private fun InstallState(
             StatusLine(stringResource(R.string.models_installed), ok = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = onTest, enabled = test != SelfTest.Running) { Text(stringResource(R.string.models_test)) }
-                TextButton(onClick = onDelete) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
+                // Con la prueba en marcha el borrado tendría que esperar a que acabe (ModelManager.delete).
+                val testing = test == SelfTest.Running
+                TextButton(onClick = onDelete, enabled = !testing) {
+                    Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error.copy(alpha = if (testing) 0.38f else 1f))
+                }
             }
             when (test) {
                 null -> Unit

@@ -43,12 +43,12 @@ class Transcriber(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var recognizer: OfflineRecognizer? = null
     private var modelId = "" // el de [recognizer]
+    private var failedId = "" // el último que no cargó en caliente: no se reintenta en cada trozo
     private var refs = 0
 
     /**
      * Carga el modelo elegido si hace falta (refcount); false si no hay modelo o falla.
-     * Si ya hay uno cargado se comparte aunque en Ajustes hayan elegido otro: el cambio se aplica
-     * cuando todos lo sueltan (cambiarlo en caliente dejaría sin reconocedor a la escucha si el nuevo falla).
+     * Si ya hay uno cargado se comparte; si en Ajustes han elegido otro, [transcribe] lo cambia en caliente.
      */
     suspend fun acquire(): Boolean = mutex.withLock {
         if (recognizer == null && !load(settings.current().asrModelId)) return@withLock false
@@ -71,8 +71,24 @@ class Transcriber(
      * Lanza IllegalStateException sin [acquire] previo: así el trozo no se da por vacío y se reintenta.
      */
     suspend fun transcribe(samples: FloatArray, sampleRate: Int = SAMPLE_RATE): String = mutex.withLock {
+        switchToChosen()
         val rec = checkNotNull(recognizer) { "Transcriber sin modelo: falta acquire()" }
         withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate, modelId) }
+    }
+
+    /**
+     * La escucha retiene el reconocedor toda la sesión (días): si en Ajustes han elegido otro modelo instalado, se
+     * carga entre dos trozos y sustituye al de ahora solo si carga y pasa la autoprueba. Si no, sigue el de antes.
+     */
+    // ponytail: mientras carga el nuevo están los dos en memoria; soltar antes el viejo ahorraría RAM a cambio
+    // de quedarse sin reconocedor si el nuevo falla.
+    private suspend fun switchToChosen() {
+        val wanted = settings.current().asrModelId
+        if (recognizer == null || wanted == modelId || wanted == failedId || !models.isInstalled(wanted)) return
+        if (!load(wanted)) {
+            failedId = wanted
+            _state.value = TranscriberState.Ready(modelId)
+        }
     }
 
     private suspend fun load(id: String): Boolean {
@@ -86,13 +102,15 @@ class Transcriber(
         val error: Int? = withContext(NonCancellable + Dispatchers.Default) {
             var rec: OfflineRecognizer? = null
             try {
-                rec = createRecognizer(model, models.modelDir(id))
+                rec = models.openRecognizer(model)
                 // Autoprueba (§5.4): hay móviles en los que el modelo carga pero no devuelve nada.
                 if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id).isEmpty()) {
                     R.string.asr_error_empty
                 } else {
+                    recognizer?.release() // el anterior, si se cambia en caliente
                     recognizer = rec
                     modelId = id
+                    failedId = ""
                     rec = null
                     null
                 }

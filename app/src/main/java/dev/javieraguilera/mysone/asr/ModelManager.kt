@@ -9,6 +9,7 @@ import android.text.format.Formatter
 import android.util.Log
 import androidx.core.content.edit
 import androidx.core.net.toUri
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import dev.javieraguilera.mysone.R
 import java.io.File
 import java.io.IOException
@@ -29,6 +30,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class AsrModel(
@@ -99,6 +102,11 @@ class ModelManager(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, Job>()
 
+    // sherpa-onnx lee los ficheros del modelo uno a uno al crear el reconocedor: si se borran a medias, la sesión
+    // de ONNX lanza una excepción nativa que cruza la JNI y mata el proceso (con la escucha). Borrar espera.
+    // ponytail: un cerrojo para todos los modelos; uno por modelo si alguna vez se cargan dos a la vez.
+    private val files = Mutex()
+
     private val _installs = MutableStateFlow(
         catalog.associate { m ->
             m.id to when {
@@ -154,11 +162,15 @@ class ModelManager(private val context: Context) {
         setState(id, if (isInstalled(id)) ModelInstall.Installed else ModelInstall.NotInstalled)
     }
 
+    /** Espera a que acabe quien esté cargando el modelo (autoprueba, escucha, importación). */
     suspend fun delete(id: String) {
         cancel(id)
-        withContext(Dispatchers.IO) { modelDir(id).deleteRecursively() }
+        files.withLock { withContext(Dispatchers.IO) { modelDir(id).deleteRecursively() } }
         setState(id, ModelInstall.NotInstalled)
     }
+
+    /** Reconocedor nuevo con los ficheros de [model], sin que nadie los borre mientras se leen. */
+    internal suspend fun openRecognizer(model: AsrModel): OfflineRecognizer = files.withLock { createRecognizer(model, modelDir(model.id)) }
 
     /** Todos los ficheros en su sitio y con su tamaño. El hash se comprueba al instalar: solo llegan aquí verificados. */
     fun isInstalled(id: String): Boolean = catalog.find { it.id == id }?.hasFilesIn(modelDir(id)) == true
@@ -181,7 +193,7 @@ class ModelManager(private val context: Context) {
             return@withContext Result.failure(IllegalStateException(context.getString(R.string.asr_error_not_installed)))
         }
         val text = try {
-            val rec = createRecognizer(model, modelDir(id))
+            val rec = openRecognizer(model)
             try {
                 rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id)
             } finally {

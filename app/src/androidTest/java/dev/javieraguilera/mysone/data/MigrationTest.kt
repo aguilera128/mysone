@@ -17,6 +17,12 @@ import org.junit.runner.RunWith
 class MigrationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
+    // El helper no borra la base de una ejecución anterior (la app no se desinstala entre ejecuciones): sin esto,
+    // createDatabase(1) la abre y falla con «A migration should never occur while creating a new database».
+    init {
+        instrumentation.targetContext.deleteDatabase("migration-test.db")
+    }
+
     @get:Rule
     val helper = MigrationTestHelper(
         instrumentation,

@@ -477,6 +477,9 @@ class ListeningService : Service() {
     private suspend fun enqueueLocked(chunk: VoiceChunk) {
         // Dicho antes de pulsar "Olvidar" y aún en la VAD o en el canal: no se guarda.
         if (ListeningController.isForgotten(chunk.startMs, chunk.endMs)) return
+        // Con el disco lleno fallaría la escritura sin dejar rastro: se para antes, con margen para que quepa el hueco.
+        if (filesDir.usableSpace < MIN_FREE_BYTES) return openGapLocked(GapReason.STORAGE)
+        closeGapLocked(GapReason.STORAGE)
         // ponytail: el tope cuenta la cola entera con una suma por trozo; basta con miles de filas.
         if (queue.totalDurationMs() >= MAX_QUEUE_MS) return openGapLocked(GapReason.BATTERY)
         closeGapLocked(GapReason.BATTERY)
@@ -654,6 +657,7 @@ class ListeningService : Service() {
         private const val DRAIN_MS = 30_000L
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_MS = 4 * 3_600_000L
+        private const val MIN_FREE_BYTES = 200L * 1024 * 1024
         private const val LOW_BATTERY = 20
 
         /**

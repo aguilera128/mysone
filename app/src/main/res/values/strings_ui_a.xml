@@ -21,6 +21,7 @@
     <string name="gap_battery">Sin grabar por batería baja</string>
     <string name="gap_error">Error de la escucha</string>
     <string name="gap_killed">Android cerró la app</string>
+    <string name="gap_storage">Sin grabar por falta de espacio</string>
 
     <!-- Estado de una conversación -->
     <string name="conv_state_transcribing">Transcribiendo…</string>

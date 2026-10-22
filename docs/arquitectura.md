@@ -136,7 +136,7 @@ data class ChatMessage(@PrimaryKey(autoGenerate = true) val id: Long = 0,
 @Entity(tableName = "listening_gap", indices = [Index("startedAt")])
 data class ListeningGap(@PrimaryKey(autoGenerate = true) val id: Long = 0,
   val startedAt: Long, val endedAt: Long? = null,
-  val reason: String /* GapReason.PAUSED | STOPPED | MIC_BUSY | BATTERY | ERROR | KILLED */)
+  val reason: String /* GapReason.PAUSED | STOPPED | MIC_BUSY | BATTERY | ERROR | KILLED | STORAGE */)
 ```
 
 Las FK de `task` y `fact` borran en cascada: borrar u olvidar una conversación borra lo derivado
@@ -363,6 +363,8 @@ class AppContainer(val app: Application) {
    → escribe PCM16 en `filesDir/pending/<uuid>.pcm` → inserta `PendingAudio` → avisa al hilo 3.
    Tiempos absolutos: `t0Ms` (reloj de pared al arrancar la captura) + `startSample * 1000 / 16000`.
    Tope de cola: 4 h de audio; si se supera, se descartan los trozos nuevos y se registra hueco `BATTERY`.
+   Con menos de 200 MB libres en `filesDir`, igual con hueco `STORAGE`: con el disco lleno la escritura fallaría sin
+   dejar rastro, y el margen deja sitio a SQLite para el hueco.
 3. **ASR** (un único dispatcher de un hilo): bucle `next()` → si `batterySaver` y batería < 20 % sin
    cargar, o estado térmico ≥ `SEVERE`, esperar a `ACTION_POWER_CONNECTED`/mejora (estado visible en
    la notificación). `bumpAttempts` **antes** de decodificar; si `attempts ≥ 3`, borrar el trozo (se

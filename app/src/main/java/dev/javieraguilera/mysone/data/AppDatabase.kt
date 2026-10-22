@@ -1,6 +1,7 @@
 package dev.javieraguilera.mysone.data
 
 import android.content.Context
+import androidx.room3.AutoMigration
 import androidx.room3.Database
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
@@ -14,8 +15,10 @@ import kotlinx.coroutines.Dispatchers
         Conversation::class, Segment::class, SegmentFts::class, ConversationFts::class, PendingAudio::class,
         TaskItem::class, Fact::class, DailyDigest::class, ChatMessage::class, ListeningGap::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // 2: segment.speaker (quién habla, §5.6). Columna nueva que admite null: Room la añade sin tocar lo guardado.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversations(): ConversationDao

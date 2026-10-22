@@ -58,7 +58,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.ModelInstall
+import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.container
+import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.ui.components.BackTopBar
 import dev.javieraguilera.mysone.ui.components.SectionHeader
@@ -83,11 +85,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 private const val AUDIO_VOICE = "VOICE_RECOGNITION"
 private const val AUDIO_MIC = "MIC"
 
-data class BatteryState(val unrestricted: Boolean, val backgroundRestricted: Boolean)
+/** [lastExit]: texto del motivo y hora del último cierre de la app con la escucha en marcha (ListeningService.lastExit). */
+data class BatteryState(val unrestricted: Boolean, val backgroundRestricted: Boolean, val lastExit: Pair<Int, Long>? = null)
 
 private fun batteryState(context: Context) = BatteryState(
     unrestricted = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
     backgroundRestricted = context.getSystemService(ActivityManager::class.java).isBackgroundRestricted,
+    lastExit = ListeningService.lastExit(context),
 )
 
 /** Guía de dontkillmyapp.com para el fabricante ("Xiaomi" → https://dontkillmyapp.com/xiaomi). */
@@ -263,6 +267,10 @@ private fun BatterySection(
             OutlinedButton(onClick = onOpenAppDetails, modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(stringResource(R.string.settings_battery_app_details))
             }
+        }
+        battery.lastExit?.let { (reason, at) ->
+            val time = stringResource(R.string.ui_day_time, Time.dayShort(at), Time.hourMinute(at))
+            Note(stringResource(R.string.capture_last_exit, stringResource(reason), time))
         }
         val tip = when (manufacturer.lowercase(Locale.ROOT)) {
             "samsung" -> R.string.settings_battery_tip_samsung

@@ -331,7 +331,9 @@ class AppContainer(val app: Application) {
   estado `Error`, `ResumeNotifier.show()` ("La escucha se ha detenido" con la acción "Reanudar", que pide
   desbloquear el móvil) y `stopSelf()`.
 - Intent nulo (reinicio sticky): si `listeningEnabled`, intentar reanudar; si el micro no abre,
-  `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido.
+  `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido, y el motivo que dio Android
+  (`getHistoricalProcessExitReasons`, el primero de este proceso posterior al latido; `REASON_UNKNOWN` si no hay) en las
+  prefs `capture`: solo el último, que Ajustes › Batería enseña como «Último cierre de la app mientras escuchaba».
 - Parado por el sistema sin matar el proceso (`onDestroy` con la captura en marcha): `Off` y `ResumeNotifier` en el
   momento, sin esperar al mantenimiento; el latido deja el hueco `KILLED`. El nivel del micro solo se publica con la
   captura abierta, para que el último que llega al soltarla no vuelva a poner `Listening`.
@@ -668,7 +670,8 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   clave —campo de contraseña, nunca se muestra entera—, **aviso de envío con aceptación**, probar
   conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, ocultar en capturas,
   exportar JSON con aviso, borrar todo con doble confirmación); Batería (abrir excepción de
-  optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>); Acerca de (versión,
+  optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>, motivo y hora del último cierre de la app
+  mientras escuchaba); Acerca de (versión,
   licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA, ERes2Net de 3D-Speaker Apache-2.0).
 
 Accesibilidad: `contentDescription` en iconos, objetivos ≥ 48 dp, contraste AA, textos escalables.

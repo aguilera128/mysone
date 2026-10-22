@@ -65,7 +65,8 @@ búsqueda funcionan igual en local. Detalle y costes: `docs/investigacion/05`.
   telefónica; dos voces muy parecidas pueden salir como una (`docs/investigacion/09`). Sin probar en llamadas reales.
 - Probado a fondo en emulador (API 34 y 36) con IA falsa (`tools/mock-llm.mjs`). **Sin probar todavía**:
   un móvil real (batería, fabricantes que matan procesos, micro en el bolsillo), un proveedor de IA
-  real con clave de verdad, la pantalla de bloqueo con PIN y Android 17.
+  real con clave de verdad, la pantalla de bloqueo con PIN y Android 17. Para lo primero, Ajustes › Batería enseña
+  el motivo del último cierre de la app mientras escuchaba (poca memoria, detenida a mano, fallo nativo…).
 
 ## Pruebas en emulador
 

@@ -1,5 +1,7 @@
 package dev.javieraguilera.mysone.capture
 
+import android.app.ApplicationExitInfo
+import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.data.GapDao
 import dev.javieraguilera.mysone.data.GapReason
@@ -54,5 +56,14 @@ class ListeningLogicTest {
         assertEquals(ListeningStatus.Starting, ListeningController.status.value)
         job.cancel()
         ListeningController.publish(ListeningStatus.Off)
+    }
+
+    @Test fun `motivo del último cierre, con el MemoryLimiter por delante del código`() {
+        val label = ListeningService.Companion::exitReasonLabel
+        assertEquals(R.string.capture_exit_low_memory, label(ApplicationExitInfo.REASON_LOW_MEMORY, false))
+        assertEquals(R.string.capture_exit_mem_limiter, label(ApplicationExitInfo.REASON_OTHER, true))
+        assertEquals(R.string.capture_exit_system, label(ApplicationExitInfo.REASON_OTHER, false))
+        assertEquals(R.string.capture_exit_unknown, label(ApplicationExitInfo.REASON_UNKNOWN, false)) // Android no anotó nada
+        assertEquals(R.string.capture_exit_system, label(99, false)) // uno que aún no existe
     }
 }

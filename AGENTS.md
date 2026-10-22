@@ -17,7 +17,7 @@ WorkManager 2.12.0, OkHttp 5.5.0, sherpa-onnx 1.13.8 (JitPack), Sentry 8.61.0. S
 | Paquete | Qué hace |
 |---|---|
 | `capture/` | Foreground service de micrófono, `AudioRecord` 16 kHz, cola en disco PCM16, conversaciones, huecos, notificación |
-| `asr/` | VAD Silero + reconocedor sherpa-onnx (Canary 180M / Parakeet v3), descarga y verificación de modelos, importar audio |
+| `asr/` | VAD Silero + reconocedor sherpa-onnx (Canary 180M / Parakeet v3), descarga y verificación de modelos, importar audio y llamadas, quién habla en lo importado (`Speakers.kt`, `OwnerVoice.kt`) |
 | `ai/` | Clientes Anthropic (Messages API por HTTP) y compatibles con OpenAI, procesado, recordatorio rápido, Preguntar, resumen diario |
 | `tasks/` | Alarmas de recordatorios, eventos del sistema, mantenimiento periódico, exportar/olvidar/borrar |
 | `data/`, `core/`, `ui/` | Room, ajustes (DataStore) y clave cifrada (Keystore); utilidades; pantallas Compose |
@@ -58,7 +58,11 @@ búsqueda funcionan igual en local. Detalle y costes: `docs/investigacion/05`.
   Transcripción, y borrarla después (§5.5). WhatsApp y otras VoIP quedan fuera: el teléfono no las graba.
 - Tras reiniciar o actualizar, Android no deja reabrir el micro solo: sale «Toca para reanudar».
 - Monosílabos aislados («Sí.», «No.») no llegan al reconocedor (VAD con 0,25 s mínimo, a propósito:
-  `docs/investigacion/08`). Sin separación de voces (quién habla) ni audio guardado.
+  `docs/investigacion/08`). Sin audio guardado.
+- Quién habla («Hablante 1», «Hablante 2», «Tú» con la voz registrada) solo en lo importado (audios y llamadas) y
+  con el modelo de voces (26 MB) bajado en Ajustes › Transcripción; la escucha en directo no lo hace (coste y diseño:
+  `docs/arquitectura.md` §5.6). Medido con voces MLS-es: 96 % del tiempo bien atribuido en banda ancha, 89 % en
+  telefónica; dos voces muy parecidas pueden salir como una (`docs/investigacion/09`). Sin probar en llamadas reales.
 - Probado a fondo en emulador (API 34 y 36) con IA falsa (`tools/mock-llm.mjs`). **Sin probar todavía**:
   un móvil real (batería, fabricantes que matan procesos, micro en el bolsillo), un proveedor de IA
   real con clave de verdad, la pantalla de bloqueo con PIN y Android 17.
@@ -74,7 +78,17 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ANDROID_HOME="$LO
 ```
 
 Los tests instrumentados (`app/src/androidTest`) prueban los DAOs y el FTS5 sobre Room en memoria
-con `BundledSQLiteDriver`.
+con `BundledSQLiteDriver`, y las migraciones (`MigrationTest`, contra `app/schemas`).
+
+**Con el móvil personal conectado, nunca `connectedDebugAndroidTest` ni `installQa`** (instalarían encima y
+desinstalarían al acabar). O `ANDROID_SERIAL=emulator-5554` delante, o, más seguro, instalar y lanzar a mano:
+
+```bash
+./gradlew assembleDebug assembleDebugAndroidTest
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 Build `qa` (`./gradlew installQa`): la release con R8 y shrink, firmada con la clave debug, `dev.javieraguilera.mysone.qa` con el nombre «Mysone QA» y sin depurable, con http:// permitido solo a `10.0.2.2` y `localhost` para probarla contra `tools/mock-llm.mjs`.
 
@@ -109,3 +123,21 @@ adb shell "run-as dev.javieraguilera.mysone sh -c 'mkdir -p files/debug && cp /d
 
 Después, empezar (o reanudar) la escucha en la app. Para repetir, volver a copiar `mic.pcm` y pausar y
 reanudar la escucha (o detenerla y empezar): el fichero se lee al abrir el micro, no mientras se captura.
+
+### Quién habla
+
+Cómo se probó (22-oct-2026, `docs/investigacion/09` §6): conversación de dos voces reales de MLS-es, turnos
+alternos con pausas de 0,15–0,6 s, en WAV a Descargas y como llamada (`ffmpeg -af highpass=f=300,lowpass=f=3400
+-ar 8000 -ac 1 -c:a aac -b:a 32k`) a `/sdcard/Recordings/Call/`; la voz del «dueño» son otros dos clips de una de
+ellas, en `mic.pcm` (el registro de voz usa `AudioCapture`, así que el micrófono falso le sirve igual).
+
+- Bajar el modelo de voces en Ajustes › Transcripción › Quién habla, «Registrar mi voz» con `mic.pcm` ya copiado e
+  importar. Tras registrar, borrar `files/debug/mic.pcm`: el registro para a los 15 s de voz y no lo renombra.
+- `adb push` deja la fecha de modificación del PC truncada al segundo: dos ficheros subidos a la vez la comparten, y
+  la llamada se da por ya importada (termina donde la otra importación). Antes de elegir la carpeta,
+  `adb shell touch -d 2026-10-22T18:01:07 "'/sdcard/Recordings/Call/<fichero>'"`.
+- Las capturas salen negras con «Ocultar en capturas» (Ajustes › Privacidad), activado por defecto.
+- El APK debug pesa ~144 MB: con Canary instalado, el AVD `Pixel_7_Pro_API_34` puede dar
+  `INSTALL_FAILED_INSUFFICIENT_STORAGE`; borrar antes las copias de `/data/local/tmp`.
+- Resultado esperado con esas voces: todas las líneas con su hablante salvo, a veces, un corte unos 0,5 s antes de
+  tiempo que deja una línea corta mezclada.

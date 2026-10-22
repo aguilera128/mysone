@@ -31,8 +31,16 @@ class DigestBuilder(private val container: AppContainer) {
         val today = Time.today(zone)
         val todayStart = Time.dayBounds(today, zone).first
         // ponytail: solo mira los últimos 30 días; ampliar si hace falta rellenar historiales antiguos.
-        val since = Time.dayBounds(LocalDate.parse(today).minusDays(LOOKBACK_DAYS).toString(), zone).first
-        val convs = db.conversations().inRange(since, todayStart, Int.MAX_VALUE)
+        val sinceDay = LocalDate.parse(today).minusDays(LOOKBACK_DAYS).toString()
+        val since = Time.dayBounds(sinceDay, zone).first
+        // Y los de antes cuyo resumen se quitó al borrar u olvidar algo: si no, se quedarían sin él para siempre.
+        val redo = redoDays(container.app)
+        val older = redo.filter { it < sinceDay }.flatMap { d ->
+            val (from, to) = Time.dayBounds(d, zone)
+            db.conversations().inRange(from, to, Int.MAX_VALUE)
+        }
+        val convs = db.conversations().inRange(since, todayStart, Int.MAX_VALUE) + older
+        settledRedo(redo, convs, zone).takeIf { it.isNotEmpty() }?.let { done -> editRedo(container.app) { it - done } }
         val days = daysToDigest(convs, zone).filter { day ->
             // Las mismas que se envían abajo: así la cuenta de fallos ve el mismo día.
             val dayConvs = convs.filter { Time.dayKey(it.startedAt, zone) == day }.digestable()
@@ -69,6 +77,7 @@ class DigestBuilder(private val container: AppContainer) {
                 val now = db.conversations().inRange(from, to, Int.MAX_VALUE).digestable()
                 if (now.fingerprint() != dayConvs.fingerprint()) return@withWriteTransaction false
                 db.digests().upsert(DailyDigest(day, summary, AppJson.encodeToString(highlights), System.currentTimeMillis()))
+                editRedo(container.app) { it - day } // dentro: un borrado que venga después lo vuelve a apuntar
                 true
             }
             if (saved) {
@@ -88,10 +97,34 @@ class DigestBuilder(private val container: AppContainer) {
         private const val LOOKBACK_DAYS = 30L
         internal const val MAX_ATTEMPTS = 3
         private const val PREFS = "digest_attempts"
+        private const val KEY_REDO = "redo" // días a rehacer; las demás claves son días ("yyyy-MM-dd") con sus fallos
 
-        /** "Borrar todo": fuera también los días que fallaron. */
+        /** "Borrar todo": fuera también los días que fallaron y los que había que rehacer. */
         fun forgetAttempts(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { clear() }
+
+        /** Borrar u olvidar han quitado los resúmenes de [fromDay] a [toDay]: se rehacen aunque sean antiguos. */
+        fun redo(context: Context, fromDay: String, toDay: String) = editRedo(context) { it + daysBetween(fromDay, toDay) }
+
+        private fun redoDays(context: Context): Set<String> =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_REDO, null).orEmpty()
+
+        private fun editRedo(context: Context, change: (Set<String>) -> Set<String>) = synchronized(this) {
+            val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            p.edit(commit = true) { putStringSet(KEY_REDO, change(p.getStringSet(KEY_REDO, null).orEmpty())) }
+        }
     }
+}
+
+/** Días "yyyy-MM-dd" de [fromDay] a [toDay], ambos incluidos. */
+internal fun daysBetween(fromDay: String, toDay: String): List<String> {
+    val to = LocalDate.parse(toDay)
+    return generateSequence(LocalDate.parse(fromDay)) { it.plusDays(1) }.takeWhile { it <= to }.map { it.toString() }.toList()
+}
+
+/** De los días a rehacer [redo], los que ya no hace falta apuntar: en [convs] no tienen nada que resumir ni por procesar. */
+internal fun settledRedo(redo: Set<String>, convs: List<Conversation>, zone: ZoneId): Set<String> {
+    val alive = convs.filter { (it.state == ConvState.DONE && !it.isNoise) || it.unfinished() }
+    return redo - alive.map { Time.dayKey(it.startedAt, zone) }.toSet()
 }
 
 /** Días ("yyyy-MM-dd", más recientes primero) con algo útil hecho y ninguna conversación aún por procesar. */

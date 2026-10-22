@@ -2,6 +2,8 @@ package dev.javieraguilera.mysone.tasks
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.core.content.edit
 import androidx.room3.executeSQL
 import androidx.room3.useWriterConnection
 import androidx.room3.withWriteTransaction
@@ -19,6 +21,7 @@ import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.data.ChatMessage
 import dev.javieraguilera.mysone.data.ChatRole
+import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.DailyDigest
 import dev.javieraguilera.mysone.data.Fact
@@ -31,6 +34,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -125,6 +129,12 @@ class DataManager(private val container: AppContainer) {
         val files = ListeningService.book.withLock {
             db.withWriteTransaction {
                 val c = db.conversations().get(id) ?: return@withWriteTransaction emptyList()
+                // La abierta: lo que la VAD o el canal aún traigan de antes de borrar no abre otra con esa voz. Un
+                // trozo llega como mucho unos 30 s tarde (como en forgetLast).
+                if (c.state == ConvState.OPEN) {
+                    val now = System.currentTimeMillis()
+                    ListeningController.markForgotten(maxOf(c.startedAt, now - MINUTE_MS), now)
+                }
                 db.tasks().forConversation(id).forEach { container.reminders.cancel(it.id) }
                 val files = db.pendingAudio().forConversation(id).map { it.path }
                 db.conversations().delete(id)
@@ -137,24 +147,35 @@ class DataManager(private val container: AppContainer) {
         flushWal()
     }
 
-    /** Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. */
+    /**
+     * Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. Si falla, se borra el documento
+     * que ya creó el selector: si no, quedaría en el destino un JSON a medias (o vacío) que el dueño cree que no existe.
+     */
     @OptIn(ExperimentalSerializationApi::class)
     suspend fun exportJson(target: Uri) {
-        val export = ExportFile(
-            exportedAt = System.currentTimeMillis(),
-            settings = container.settings.current(),
-            conversations = db.conversations().all(),
-            segments = db.segments().inRange(0, Long.MAX_VALUE),
-            tasks = db.tasks().all(),
-            facts = db.facts().all(),
-            digests = db.digests().all(),
-            chat = db.chat().all(),
-            gaps = db.gaps().all(),
-        )
-        withContext(Dispatchers.IO) {
-            // "wt": algunos proveedores no truncan con "w" y quedarían restos de un fichero anterior.
-            val out = container.app.contentResolver.openOutputStream(target, "wt") ?: throw IOException("No se puede abrir el destino")
-            out.use { AppJson.encodeToStream(ExportFile.serializer(), export, it) }
+        try {
+            val export = ExportFile(
+                exportedAt = System.currentTimeMillis(),
+                settings = container.settings.current(),
+                conversations = db.conversations().all(),
+                segments = db.segments().inRange(0, Long.MAX_VALUE),
+                tasks = db.tasks().all(),
+                facts = db.facts().all(),
+                digests = db.digests().all(),
+                chat = db.chat().all(),
+                gaps = db.gaps().all(),
+            )
+            withContext(Dispatchers.IO) {
+                // "wt": algunos proveedores no truncan con "w" y quedarían restos de un fichero anterior.
+                val out = container.app.contentResolver.openOutputStream(target, "wt") ?: throw IOException("No se puede abrir el destino")
+                out.use { AppJson.encodeToStream(ExportFile.serializer(), export, it) }
+            }
+        } catch (e: Throwable) {
+            // Si el proveedor no deja borrar, se queda como estaba. Si el proceso muere a mitad, tampoco se borra.
+            withContext(NonCancellable + Dispatchers.IO) {
+                runCatching { DocumentsContract.deleteDocument(container.app.contentResolver, target) }
+            }
+            throw e
         }
     }
 
@@ -176,6 +197,7 @@ class DataManager(private val container: AppContainer) {
         }
         flushWal()
         DigestBuilder.forgetAttempts(container.app)
+        imports().edit { clear() }
         ListeningService.forgetSession(container.app)
         AudioImporter.forgetHistory(container.app)
         container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
@@ -184,11 +206,35 @@ class DataManager(private val container: AppContainer) {
         OwnerVoice.delete(container.app) // la huella de voz del dueño (dato biométrico, §5.6); el modelo de voces se queda
     }
 
-    /** Solo la transcripción literal: resúmenes, tareas y facts se quedan (§3, retentionDays). */
+    /**
+     * Lo literal: la transcripción, la cita de cada tarea y el chat de Preguntar, cuyas respuestas copian fragmentos.
+     * Resúmenes, tareas y facts se quedan (§3, retentionDays).
+     */
     suspend fun applyRetention() {
         val cutoff = retentionCutoff(System.currentTimeMillis(), container.settings.current().retentionDays) ?: return
-        db.segments().deleteOlderThan(cutoff)
+        val imports = imports()
+        db.withWriteTransaction {
+            // Dentro de la transacción: una importación que se esté guardando ya se ha apuntado o aún no tiene texto.
+            val keep = importedSince(imports.all, cutoff)
+            db.segments().deleteOlderThan(cutoff, keep)
+            db.tasks().dropQuotesOlderThan(cutoff, keep)
+            db.chat().deleteOlderThan(cutoff)
+        }
+        // Las importadas antes del corte ya cuentan como las demás. Por fecha: lo apuntado entretanto se queda.
+        imports.edit { imports.all.filterValues { (it as? Long ?: 0L) < cutoff }.keys.forEach(::remove) }
+        flushWal()
     }
+
+    /**
+     * Lo importado (audio o llamada) cuenta para la retención desde que se importa, no desde la fecha del fichero: una
+     * llamada de hace meses, cuya grabación ya se ha borrado, perdería su texto en la siguiente pasada (§5.5).
+     * ImportWorker lo llama en la transacción que la guarda.
+     */
+    // ponytail: en preferencias para no migrar la BD; pasarlo a una columna conversation.importedAt en la próxima migración.
+    fun markImported(conversationId: Long) =
+        imports().edit(commit = true) { putLong(conversationId.toString(), System.currentTimeMillis()) }
+
+    private fun imports() = container.app.getSharedPreferences(IMPORTS, Context.MODE_PRIVATE)
 
     /** Lo sacado de lo olvidado ([fromForgotten]) y los facts sugeridos; el reprocesado rehace las sugerencias. */
     private suspend fun dropDerived(conversationId: Long, since: Long, left: List<Segment>) {
@@ -218,8 +264,11 @@ class DataManager(private val container: AppContainer) {
      */
     private suspend fun flushWal() = db.useWriterConnection { it.executeSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
 
-    /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello. */
-    private suspend fun deleteDigests(fromMs: Long, toMs: Long) = db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
+    /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello, aunque sean antiguos. */
+    private suspend fun deleteDigests(fromMs: Long, toMs: Long) {
+        db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
+        DigestBuilder.redo(container.app, Time.dayKey(fromMs), Time.dayKey(toMs))
+    }
 
     /** Todos los trozos viven en pending/; se resuelve por nombre, guarde la captura la ruta absoluta o relativa. */
     private fun pendingFile(path: String) = File(pendingDir(container.app), File(path).name)
@@ -227,6 +276,11 @@ class DataManager(private val container: AppContainer) {
     companion object {
         private const val MINUTE_MS = 60_000L
         private const val DAY_MS = 24 * 3_600_000L
+        private const val IMPORTS = "retention_imports" // id de conversación importada → cuándo se importó
+
+        /** Ids de las conversaciones de [saved] ([IMPORTS]) importadas desde [cutoff]: conservan su texto. */
+        internal fun importedSince(saved: Map<String, *>, cutoff: Long): List<Long> =
+            saved.mapNotNull { (id, at) -> id.toLongOrNull()?.takeIf { (at as? Long ?: 0L) >= cutoff } }
 
         /** Ids de las respuestas con alguna de [conversationIds] en su contexto y de la pregunta que las precede. */
         internal fun chatToForget(messages: List<ChatMessage>, conversationIds: Set<Long>): List<Long> {

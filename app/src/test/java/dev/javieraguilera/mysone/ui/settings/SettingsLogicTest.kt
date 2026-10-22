@@ -12,6 +12,14 @@ class SettingsLogicTest {
         assertEquals("https://dontkillmyapp.com/oneplus", dontKillMyAppUrl("OnePlus"))
     }
 
+    @Test fun `acortar la retención se confirma, alargarla no`() {
+        assertTrue(shortensRetention(90, 7))
+        assertTrue(shortensRetention(0, 365)) // de «No borrar nunca» a un plazo
+        assertFalse(shortensRetention(7, 90))
+        assertFalse(shortensRetention(90, 0))
+        assertFalse(shortensRetention(90, 90))
+    }
+
     @Test fun `url de la api solo https o http local`() {
         assertTrue(isValidBaseUrl("https://api.anthropic.com"))
         assertTrue(isValidBaseUrl("http://10.0.2.2:8787", allowLocalHttp = true))

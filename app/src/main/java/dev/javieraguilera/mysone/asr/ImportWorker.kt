@@ -185,6 +185,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = speakers?.getOrNull(p.part)),
                 )
             }
+            c.data.markImported(convId) // la retención cuenta desde ahora, no desde la fecha del fichero
             convId
         } ?: return R.string.asr_import_cancelled
         this.startedAt = startedAt

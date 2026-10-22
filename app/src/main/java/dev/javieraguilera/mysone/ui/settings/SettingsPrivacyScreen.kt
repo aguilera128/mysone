@@ -109,6 +109,9 @@ private fun ListeningStatus.isActive() =
 /** Días de retención de la transcripción literal; 0 = no borrar. */
 private val RETENTION_OPTIONS = listOf(7, 30, 90, 180, 365, 0)
 
+/** Pasar de [current] a [days] borra en la próxima pasada lo que el plazo de antes guardaba: se confirma. */
+internal fun shortensRetention(current: Int, days: Int) = days != 0 && (current == 0 || days < current)
+
 private const val STEP_NONE = 0
 private const val STEP_FIRST = 1
 private const val STEP_SECOND = 2
@@ -148,6 +151,7 @@ private fun SettingsPrivacyContent(
 ) {
     var exportNotice by rememberSaveable { mutableStateOf(false) }
     var deleteStep by rememberSaveable { mutableIntStateOf(STEP_NONE) }
+    var pendingRetention by rememberSaveable { mutableStateOf<Int?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val text = message?.let { stringResource(it) }
     LaunchedEffect(text) {
@@ -170,7 +174,13 @@ private fun SettingsPrivacyContent(
                         title = if (days == 0) stringResource(R.string.privacy_retention_never) else stringResource(R.string.privacy_retention_days, days),
                         summary = if (days == 90) stringResource(R.string.privacy_retention_default) else null,
                         selected = settings.retentionDays == days,
-                        onClick = { onUpdate { it.copy(retentionDays = days) } },
+                        onClick = {
+                            if (shortensRetention(settings.retentionDays, days)) {
+                                pendingRetention = days
+                            } else {
+                                onUpdate { it.copy(retentionDays = days) }
+                            }
+                        },
                     )
                 }
             }
@@ -218,6 +228,20 @@ private fun SettingsPrivacyContent(
                 onExport()
             },
             onDismiss = { exportNotice = false },
+        )
+    }
+    // Acortar el plazo borra casi lo mismo que «Borrar todo» con un toque, y puede ser dentro de minutos.
+    pendingRetention?.let { days ->
+        ConfirmDialog(
+            title = stringResource(R.string.privacy_retention_confirm_title),
+            message = stringResource(R.string.privacy_retention_confirm_message, days),
+            confirmLabel = stringResource(R.string.privacy_retention_confirm),
+            onConfirm = {
+                pendingRetention = null
+                onUpdate { it.copy(retentionDays = days) }
+            },
+            onDismiss = { pendingRetention = null },
+            destructive = true,
         )
     }
     // Doble confirmación: la primera explica qué se borra; la segunda recuerda que no hay vuelta atrás.

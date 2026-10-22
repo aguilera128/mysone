@@ -167,9 +167,9 @@ interface SegmentDao {
     @Query("SELECT * FROM segment WHERE startedAt >= :from AND startedAt < :to ORDER BY startedAt")
     suspend fun inRange(from: Long, to: Long): List<Segment>
 
-    /** Retención: borra la transcripción literal que terminó antes de [ts]. */
-    @Query("DELETE FROM segment WHERE endedAt < :ts")
-    suspend fun deleteOlderThan(ts: Long): Int
+    /** Retención: borra la transcripción literal que terminó antes de [ts], salvo la de [keep] (importadas después). */
+    @Query("DELETE FROM segment WHERE endedAt < :ts AND conversationId NOT IN (:keep)")
+    suspend fun deleteOlderThan(ts: Long, keep: List<Long>): Int
 
     /** "Olvidar los últimos N min": todo lo que termina después de [ts], aunque empezara antes. */
     @Query("DELETE FROM segment WHERE endedAt > :ts")
@@ -259,6 +259,13 @@ interface TaskDao {
 
     @Query("SELECT * FROM task ORDER BY createdAt")
     suspend fun all(): List<TaskItem>
+
+    /** Retención: la cita literal de las tareas de conversaciones terminadas antes de [ts], salvo [keep]. La tarea se queda. */
+    @Query(
+        "UPDATE task SET sourceQuote = NULL WHERE sourceQuote IS NOT NULL AND conversationId IN " +
+            "(SELECT id FROM conversation WHERE endedAt < :ts AND id NOT IN (:keep))",
+    )
+    suspend fun dropQuotesOlderThan(ts: Long, keep: List<Long>): Int
 }
 
 @Dao
@@ -330,6 +337,10 @@ interface ChatDao {
 
     @Query("DELETE FROM chat_message WHERE id IN (:ids)")
     suspend fun delete(ids: List<Long>)
+
+    /** Retención: las respuestas copian fragmentos literales; se van con la transcripción. */
+    @Query("DELETE FROM chat_message WHERE createdAt < :ts")
+    suspend fun deleteOlderThan(ts: Long): Int
 
     @Query("SELECT * FROM chat_message ORDER BY createdAt, id")
     suspend fun all(): List<ChatMessage>

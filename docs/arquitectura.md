@@ -140,7 +140,8 @@ data class ListeningGap(@PrimaryKey(autoGenerate = true) val id: Long = 0,
 ```
 
 Las FK de `task` y `fact` borran en cascada: borrar u olvidar una conversación borra lo derivado
-(salvaguarda legal 06 §11). Las creadas a mano (`conversationId = null`) no se tocan.
+(salvaguarda legal 06 §11). Las creadas a mano (`conversationId = null`) no se tocan. Borrar la abierta descarta
+además, como «olvidar», lo que la captura aún traiga de su último minuto: si no, reaparecería como otra conversación.
 
 DAOs (suspend/Flow; lista orientativa, la fase A puede añadir las que vea necesarias):
 - `ConversationDao`: `insert`, `update`, `get(id)`, `observe(id): Flow`, `observeDay(from, to): Flow<List<Conversation>>`,
@@ -173,7 +174,7 @@ data class AppSettings(
   val asrModelId: String = "canary-180m-es",
   val downloadWifiOnly: Boolean = true,        // modelos ASR: descargar solo con Wi-Fi
   val batterySaver: Boolean = true,            // batería < 20 % y sin cargar → se encola sin transcribir
-  val retentionDays: Int = 90,                 // transcripción literal; 0 = no borrar. Resúmenes, tareas y facts se quedan
+  val retentionDays: Int = 90,                 // transcripción literal, cita de las tareas y chat; 0 = no borrar. Resúmenes, tareas y facts se quedan
   val secureScreen: Boolean = true,            // FLAG_SECURE
   val quickReminders: Boolean = true,          // detectar "recuérdame…" al momento
   val callFolder: String? = null,              // árbol SAF de la grabadora de llamadas del teléfono (§5.5)
@@ -298,7 +299,7 @@ class ReminderScheduler(context: Context) {
 class DataManager(container: AppContainer) {
   suspend fun forgetLast(minutes: Int)            // segmentos, cola pendiente y conversaciones vaciadas
   suspend fun deleteConversation(id: Long)
-  suspend fun exportJson(target: Uri)             // todo menos la clave
+  suspend fun exportJson(target: Uri)             // todo menos la clave; si falla, borra el documento a medias
   suspend fun deleteAll()                         // BD, cola, chat, ajustes de IA, clave y voz registrada; conserva los modelos
   suspend fun applyRetention()
 }
@@ -426,7 +427,9 @@ Cada elección de carpeta tiene su token: lo encolado con otro (tras «Dejar de 
 acaba sin leerse ni borrarse. El borrado se decide al terminar, con `callDeleteAfter` (por defecto) y el token
 vigentes: solo si la conversación ya está guardada entera (lo decodificado dura lo que dice la cabecera, ±2 s) y
 el fichero no ha cambiado desde que se leyó; si falla o el final estaba dañado, se queda. Como cualquier importación,
-no se guarda si cae dentro de un «Olvidar los últimos N min» hecho mientras se transcribía.
+no se guarda si cae dentro de un «Olvidar los últimos N min» hecho mientras se transcribía. La retención cuenta lo
+importado desde que se importa, no desde la fecha del fichero (`DataManager.markImported`, en preferencias para no
+migrar la BD): si no, una llamada de hace meses perdería el texto al día siguiente, con su grabación ya borrada.
 Al elegir una carpeta con grabaciones sin transcribir se pregunta si entran también o solo las nuevas (un corte
 por fecha de modificación, que no se pierde aunque una salga y vuelva de la papelera). «Borrar todo» empieza
 soltando el permiso, parando el vigilante y olvidando la carpeta. Las llamadas de WhatsApp y otras VoIP no las graba el
@@ -607,7 +610,8 @@ Sin IA configurada: la pantalla lo explica y ofrece la búsqueda local.
 ### 7.6 Resumen diario (`DigestBuilder`)
 Para cada día anterior a hoy con conversaciones `DONE` no ruido y sin `daily_digest`: entrada =
 títulos + resúmenes + tareas del día → `{"summary": "...", "highlights": ["..."]}`. Máximo 7 días por
-pasada (los más recientes).
+pasada (los más recientes). Mira los últimos 30 días y, además, los días cuyo resumen quitó borrar u olvidar algo
+(`DigestBuilder.redo`, en las preferencias `digest_attempts`), hasta rehacerlo o quedarse sin nada que resumir.
 
 ### 7.7 Coste orientativo (05)
 3 h de voz/día ≈ 30 000 palabras ≈ 50 000 tokens: Haiku 5.5 en segundo plano ≈ 1 $/mes; respuestas
@@ -665,7 +669,7 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   descargar/cancelar/borrar, probar, elegir; importar audio; llamadas; quién habla: modelo de voces y
   registrar/borrar tu voz); IA (`SettingsAi`: preset, URL, modelos,
   clave —campo de contraseña, nunca se muestra entera—, **aviso de envío con aceptación**, probar
-  conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, ocultar en capturas,
+  conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, que pide confirmar si se acorta, ocultar en capturas,
   exportar JSON con aviso, borrar todo con doble confirmación); Batería (abrir excepción de
   optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>); Acerca de (versión,
   licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA, ERes2Net de 3D-Speaker Apache-2.0).

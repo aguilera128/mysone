@@ -150,6 +150,38 @@ class DaosTest {
     }
 
     @Test
+    fun retentionDropsLiteralTextButKeepsTasks() = runTest {
+        val old = conversation(at = T0)
+        val recent = conversation(at = T0 + 3_600_000)
+        segment(old, "llamar al dentista")
+        segment(recent, "comprar pan", T0 + 3_600_000)
+        val oldTask = db.tasks().insert(TaskItem(text = "Dentista", state = TaskState.OPEN, conversationId = old, sourceQuote = "llamar al dentista", createdAt = T0))
+        val recentTask = db.tasks().insert(TaskItem(text = "Pan", state = TaskState.OPEN, conversationId = recent, sourceQuote = "comprar pan", createdAt = T0))
+        db.chat().insert(ChatMessage(role = ChatRole.ASSISTANT, text = "Dijo «llamar al dentista»", createdAt = T0))
+        val newer = db.chat().insert(ChatMessage(role = ChatRole.USER, text = "¿Y el pan?", createdAt = T0 + 3_600_000))
+
+        val imported = conversation(at = T0) // fichero antiguo importado hace poco: conserva su texto
+        segment(imported, "presupuesto de la obra")
+        val importedTask = db.tasks().insert(TaskItem(text = "Obra", state = TaskState.OPEN, conversationId = imported, sourceQuote = "presupuesto", createdAt = T0))
+
+        val cutoff = T0 + 1_800_000
+        db.segments().deleteOlderThan(cutoff, listOf(imported))
+        db.tasks().dropQuotesOlderThan(cutoff, listOf(imported))
+        db.chat().deleteOlderThan(cutoff)
+
+        assertEquals(0, db.segments().countForConversation(old))
+        assertEquals(1, db.segments().countForConversation(recent))
+        assertNull(db.tasks().get(oldTask)!!.sourceQuote) // la tarea se queda, sin su cita
+        assertEquals("comprar pan", db.tasks().get(recentTask)!!.sourceQuote)
+        assertEquals(listOf(newer), db.chat().all().map { it.id })
+        assertEquals(1, db.segments().countForConversation(imported))
+        assertEquals("presupuesto", db.tasks().get(importedTask)!!.sourceQuote)
+        db.segments().deleteOlderThan(cutoff, emptyList()) // sin importadas que conservar
+        assertEquals(0, db.segments().countForConversation(imported))
+        ftsIntegrity()
+    }
+
+    @Test
     fun readyWithoutPendingSkipsQueuedAudioAndOtherStates() = runTest {
         val ready = conversation(ConvState.READY, at = T0)
         val queued = conversation(ConvState.READY, at = T0 + 1_000)

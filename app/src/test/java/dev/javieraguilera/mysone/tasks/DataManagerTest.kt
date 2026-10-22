@@ -49,6 +49,13 @@ class DataManagerTest {
         assertEquals(now - day, DataManager.retentionCutoff(now, 1))
     }
 
+    @Test fun `lo importado después del corte conserva su texto aunque el fichero sea antiguo`() {
+        val cutoff = now - 90 * day
+        val saved = mapOf("5" to now - day, "6" to now - 100 * day, "7" to cutoff, "x" to now, "8" to "basura")
+        assertEquals(setOf(5L, 7L), DataManager.importedSince(saved, cutoff).toSet())
+        assertEquals(emptyList<Long>(), DataManager.importedSince(emptyMap<String, Any>(), cutoff))
+    }
+
     @Test fun `la exportación va y vuelve sin perder nada y sin clave`() {
         val export = ExportFile(
             exportedAt = now,

@@ -160,9 +160,13 @@ class DaosTest {
         db.chat().insert(ChatMessage(role = ChatRole.ASSISTANT, text = "Dijo «llamar al dentista»", createdAt = T0))
         val newer = db.chat().insert(ChatMessage(role = ChatRole.USER, text = "¿Y el pan?", createdAt = T0 + 3_600_000))
 
+        val imported = conversation(at = T0) // fichero antiguo importado hace poco: conserva su texto
+        segment(imported, "presupuesto de la obra")
+        val importedTask = db.tasks().insert(TaskItem(text = "Obra", state = TaskState.OPEN, conversationId = imported, sourceQuote = "presupuesto", createdAt = T0))
+
         val cutoff = T0 + 1_800_000
-        db.segments().deleteOlderThan(cutoff)
-        db.tasks().dropQuotesOlderThan(cutoff)
+        db.segments().deleteOlderThan(cutoff, listOf(imported))
+        db.tasks().dropQuotesOlderThan(cutoff, listOf(imported))
         db.chat().deleteOlderThan(cutoff)
 
         assertEquals(0, db.segments().countForConversation(old))
@@ -170,6 +174,10 @@ class DaosTest {
         assertNull(db.tasks().get(oldTask)!!.sourceQuote) // la tarea se queda, sin su cita
         assertEquals("comprar pan", db.tasks().get(recentTask)!!.sourceQuote)
         assertEquals(listOf(newer), db.chat().all().map { it.id })
+        assertEquals(1, db.segments().countForConversation(imported))
+        assertEquals("presupuesto", db.tasks().get(importedTask)!!.sourceQuote)
+        db.segments().deleteOlderThan(cutoff, emptyList()) // sin importadas que conservar
+        assertEquals(0, db.segments().countForConversation(imported))
         ftsIntegrity()
     }
 

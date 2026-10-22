@@ -427,7 +427,9 @@ Cada elección de carpeta tiene su token: lo encolado con otro (tras «Dejar de 
 acaba sin leerse ni borrarse. El borrado se decide al terminar, con `callDeleteAfter` (por defecto) y el token
 vigentes: solo si la conversación ya está guardada entera (lo decodificado dura lo que dice la cabecera, ±2 s) y
 el fichero no ha cambiado desde que se leyó; si falla o el final estaba dañado, se queda. Como cualquier importación,
-no se guarda si cae dentro de un «Olvidar los últimos N min» hecho mientras se transcribía.
+no se guarda si cae dentro de un «Olvidar los últimos N min» hecho mientras se transcribía. La retención cuenta lo
+importado desde que se importa, no desde la fecha del fichero (`DataManager.markImported`, en preferencias para no
+migrar la BD): si no, una llamada de hace meses perdería el texto al día siguiente, con su grabación ya borrada.
 Al elegir una carpeta con grabaciones sin transcribir se pregunta si entran también o solo las nuevas (un corte
 por fecha de modificación, que no se pierde aunque una salga y vuelva de la papelera). «Borrar todo» empieza
 soltando el permiso, parando el vigilante y olvidando la carpeta. Las llamadas de WhatsApp y otras VoIP no las graba el

@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.tasks
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.edit
 import androidx.room3.executeSQL
 import androidx.room3.useWriterConnection
 import androidx.room3.withWriteTransaction
@@ -183,6 +184,7 @@ class DataManager(private val container: AppContainer) {
         }
         flushWal()
         DigestBuilder.forgetAttempts(container.app)
+        imports().edit { clear() }
         ListeningService.forgetSession(container.app)
         AudioImporter.forgetHistory(container.app)
         container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
@@ -197,13 +199,29 @@ class DataManager(private val container: AppContainer) {
      */
     suspend fun applyRetention() {
         val cutoff = retentionCutoff(System.currentTimeMillis(), container.settings.current().retentionDays) ?: return
+        val imports = imports()
         db.withWriteTransaction {
-            db.segments().deleteOlderThan(cutoff)
-            db.tasks().dropQuotesOlderThan(cutoff)
+            // Dentro de la transacción: una importación que se esté guardando ya se ha apuntado o aún no tiene texto.
+            val keep = importedSince(imports.all, cutoff)
+            db.segments().deleteOlderThan(cutoff, keep)
+            db.tasks().dropQuotesOlderThan(cutoff, keep)
             db.chat().deleteOlderThan(cutoff)
         }
+        // Las importadas antes del corte ya cuentan como las demás. Por fecha: lo apuntado entretanto se queda.
+        imports.edit { imports.all.filterValues { (it as? Long ?: 0L) < cutoff }.keys.forEach(::remove) }
         flushWal()
     }
+
+    /**
+     * Lo importado (audio o llamada) cuenta para la retención desde que se importa, no desde la fecha del fichero: una
+     * llamada de hace meses, cuya grabación ya se ha borrado, perdería su texto en la siguiente pasada (§5.5).
+     * ImportWorker lo llama en la transacción que la guarda.
+     */
+    // ponytail: en preferencias para no migrar la BD; pasarlo a una columna conversation.importedAt en la próxima migración.
+    fun markImported(conversationId: Long) =
+        imports().edit(commit = true) { putLong(conversationId.toString(), System.currentTimeMillis()) }
+
+    private fun imports() = container.app.getSharedPreferences(IMPORTS, Context.MODE_PRIVATE)
 
     /** Lo sacado de lo olvidado ([fromForgotten]) y los facts sugeridos; el reprocesado rehace las sugerencias. */
     private suspend fun dropDerived(conversationId: Long, since: Long, left: List<Segment>) {
@@ -242,6 +260,11 @@ class DataManager(private val container: AppContainer) {
     companion object {
         private const val MINUTE_MS = 60_000L
         private const val DAY_MS = 24 * 3_600_000L
+        private const val IMPORTS = "retention_imports" // id de conversación importada → cuándo se importó
+
+        /** Ids de las conversaciones de [saved] ([IMPORTS]) importadas desde [cutoff]: conservan su texto. */
+        internal fun importedSince(saved: Map<String, *>, cutoff: Long): List<Long> =
+            saved.mapNotNull { (id, at) -> id.toLongOrNull()?.takeIf { (at as? Long ?: 0L) >= cutoff } }
 
         /** Ids de las respuestas con alguna de [conversationIds] en su contexto y de la pregunta que las precede. */
         internal fun chatToForget(messages: List<ChatMessage>, conversationIds: Set<Long>): List<Long> {

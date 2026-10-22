@@ -653,8 +653,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   "¿Qué dije del presupuesto?"); respuesta con chips de cita `HH:mm · título` que abren la
   conversación; estado "pensando"; errores claros (sin clave, sin red, cuota); borrar chat. Aviso fijo
   pequeño: "Se envía a {proveedor} un extracto de tus transcripciones".
-- **Tareas** (B5b): pestañas Pendientes · Sugeridas · Hechas; recordatorio con fecha/hora editable
-  (date/time pickers de M3); aceptar sugerida, marcar hecha, borrar; botón "+" para crear un
+- **Tareas** (B5b): pestañas Pendientes · Sugeridas · Hechas; recordatorio y fecha límite con fecha/hora
+  editables (date/time pickers de M3; la fecha límite, informativa, se puede quitar o dejar en el pasado
+  para corregir la que puso la IA); aceptar sugerida, marcar hecha, borrar; botón "+" para crear un
   recordatorio a mano; enlace a la conversación de origen, abierta en el segmento donde empieza la cita
   (sus 5 primeras palabras) si sigue en la transcripción.
 - **Memoria** (B5b): facts confirmados y sugeridos (confirmar, editar, borrar), añadir a mano.

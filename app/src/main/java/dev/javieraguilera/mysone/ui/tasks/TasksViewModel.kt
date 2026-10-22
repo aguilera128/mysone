@@ -46,16 +46,17 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
 
     /**
      * [t] es la tarea al abrir el diálogo. Si no se ha tocado el aviso, vale el de ahora: un "Posponer 1 h" desde la
-     * notificación mientras se editaba no se pierde (ni un "Hecho", que [save] parte de la fila actual).
+     * notificación mientras se editaba no se pierde (ni un "Hecho", que [save] parte de la fila actual). La fecha
+     * límite solo la cambia este diálogo: vale la de [dueAt].
      */
-    fun edit(t: TaskItem, text: String, remindAt: Long?) = save(t.id) { now ->
+    fun edit(t: TaskItem, text: String, remindAt: Long?, dueAt: Long?) = save(t.id) { now ->
         val remind = if (remindAt == t.remindAt) now.remindAt else remindAt
-        now.copy(text = text.trim(), remindAt = remind, notifiedAt = if (remind == now.remindAt) now.notifiedAt else null)
+        now.copy(text = text.trim(), remindAt = remind, dueAt = dueAt, notifiedAt = if (remind == now.remindAt) now.notifiedAt else null)
     }
 
-    fun create(text: String, remindAt: Long?) {
+    fun create(text: String, remindAt: Long?, dueAt: Long?) {
         container.appScope.launch {
-            val t = TaskItem(text = text.trim(), state = TaskState.OPEN, remindAt = remindAt, createdAt = System.currentTimeMillis())
+            val t = TaskItem(text = text.trim(), state = TaskState.OPEN, dueAt = dueAt, remindAt = remindAt, createdAt = System.currentTimeMillis())
             val id = dao.insert(t)
             container.reminders.schedule(t.copy(id = id))
         }

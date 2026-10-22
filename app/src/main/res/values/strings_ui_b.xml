@@ -49,6 +49,8 @@
     <string name="tasks_text_label">Qué tienes que hacer</string>
     <string name="tasks_add_reminder">Añadir aviso</string>
     <string name="tasks_remove_reminder">Quitar el aviso</string>
+    <string name="tasks_add_due">Añadir fecha límite</string>
+    <string name="tasks_remove_due">Quitar la fecha límite</string>
     <string name="tasks_reminder_past">Esa hora ya ha pasado. Elige una hora futura.</string>
     <string name="tasks_next">Siguiente</string>
     <string name="tasks_pick_time">Hora del aviso</string>

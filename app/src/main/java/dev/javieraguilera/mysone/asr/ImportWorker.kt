@@ -166,6 +166,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella y su duración.
         val startedAt = (modified ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
+        val who = compactSpeakers(pieces.map { speakers?.getOrNull(it.part) })
         // En una transacción: que nadie vea la conversación READY a medio llenar. Y si entretanto se ha hecho
         // "Borrar todo", nada: o se ve aquí, o el borrado viene después y se lleva también esto.
         val id = c.db.withWriteTransaction<Long?> {
@@ -180,9 +181,9 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     state = ConvState.READY,
                 ),
             )
-            for (p in pieces) {
+            for ((i, p) in pieces.withIndex()) {
                 c.db.segments().insert(
-                    Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = speakers?.getOrNull(p.part)),
+                    Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = who[i]),
                 )
             }
             convId

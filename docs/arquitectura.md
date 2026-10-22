@@ -454,7 +454,9 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
   `MAX_PARTS = 3 000` partes (horas de voz) el audio se queda sin hablantes.
 - **Numerar**: el grupo cuya huella media tiene coseno ≥ `OWNER_VOICE = 0,55` con la voz registrada es «Tú»
   (`speaker = 0`; también si la voz del dueño sale partida en dos grupos); el resto, `1, 2…` por orden de aparición.
-  Alto a propósito: un «Tú» de más le atribuye al dueño lo que dijo otro. Sin voz registrada no hay 0.
+  Alto a propósito: un «Tú» de más le atribuye al dueño lo que dijo otro. Sin voz registrada no hay 0. Al guardar se
+  vuelve a numerar solo con las partes que tienen texto (`compactSpeakers`): un trozo de ruido que forma su propio grupo
+  no deja un «Hablante 2» sin «Hablante 1».
 - **Fallos**: si el modelo no carga o una huella falla, se sigue sin hablantes (null) y el texto se guarda igual.
 - **Voz del dueño** (`OwnerVoice`): Ajustes › Transcripción › Quién habla › «Registrar mi voz». Se lee un texto en voz
   alta; `AudioCapture` (con su VAD, y en debug `files/debug/mic.pcm`) junta 15 s de voz y la huella es la media de sus

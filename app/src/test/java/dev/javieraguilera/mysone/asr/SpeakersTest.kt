@@ -151,6 +151,14 @@ class SpeakersTest {
         assertArrayEquals(intArrayOf(0, 1, 0), speakerNumbers(intArrayOf(0, 1, 2), prints, IntArray(3) { 1 }, owner = me, ownerThreshold = 0.6f))
     }
 
+    @Test fun `sin las partes descartadas los hablantes vuelven a numerarse sin huecos`() {
+        // El grupo 1 era un trozo de ruido que salió sin texto: la voz que queda pasa a ser «Hablante 1».
+        assertEquals(listOf(1, 1, 0, 1), compactSpeakers(listOf(2, 2, 0, 2)))
+        assertEquals(listOf(1, 2, 1, 3), compactSpeakers(listOf(3, 2, 3, 5)))
+        assertEquals(listOf(null, null), compactSpeakers(listOf(null, null))) // sin modelo de voces
+        assertEquals(emptyList<Int?>(), compactSpeakers(emptyList()))
+    }
+
     @Test fun `la huella media tiene norma 1`() {
         val m = meanVoice(listOf(voice(1), voice(2), voice(3)))
         assertEquals(1f, dot(m, m), 1e-5f)

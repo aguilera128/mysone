@@ -19,6 +19,7 @@ import dev.javieraguilera.mysone.data.AiSettings
 import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.data.ChatMessage
 import dev.javieraguilera.mysone.data.ChatRole
+import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.DailyDigest
 import dev.javieraguilera.mysone.data.Fact
@@ -125,6 +126,12 @@ class DataManager(private val container: AppContainer) {
         val files = ListeningService.book.withLock {
             db.withWriteTransaction {
                 val c = db.conversations().get(id) ?: return@withWriteTransaction emptyList()
+                // La abierta: lo que la VAD o el canal aún traigan de antes de borrar no abre otra con esa voz. Un
+                // trozo llega como mucho unos 30 s tarde (como en forgetLast).
+                if (c.state == ConvState.OPEN) {
+                    val now = System.currentTimeMillis()
+                    ListeningController.markForgotten(maxOf(c.startedAt, now - MINUTE_MS), now)
+                }
                 db.tasks().forConversation(id).forEach { container.reminders.cancel(it.id) }
                 val files = db.pendingAudio().forConversation(id).map { it.path }
                 db.conversations().delete(id)

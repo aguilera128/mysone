@@ -140,7 +140,8 @@ data class ListeningGap(@PrimaryKey(autoGenerate = true) val id: Long = 0,
 ```
 
 Las FK de `task` y `fact` borran en cascada: borrar u olvidar una conversación borra lo derivado
-(salvaguarda legal 06 §11). Las creadas a mano (`conversationId = null`) no se tocan.
+(salvaguarda legal 06 §11). Las creadas a mano (`conversationId = null`) no se tocan. Borrar la abierta descarta
+además, como «olvidar», lo que la captura aún traiga de su último minuto: si no, reaparecería como otra conversación.
 
 DAOs (suspend/Flow; lista orientativa, la fase A puede añadir las que vea necesarias):
 - `ConversationDao`: `insert`, `update`, `get(id)`, `observe(id): Flow`, `observeDay(from, to): Flow<List<Conversation>>`,

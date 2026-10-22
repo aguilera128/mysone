@@ -191,10 +191,18 @@ class DataManager(private val container: AppContainer) {
         OwnerVoice.delete(container.app) // la huella de voz del dueño (dato biométrico, §5.6); el modelo de voces se queda
     }
 
-    /** Solo la transcripción literal: resúmenes, tareas y facts se quedan (§3, retentionDays). */
+    /**
+     * Lo literal: la transcripción, la cita de cada tarea y el chat de Preguntar, cuyas respuestas copian fragmentos.
+     * Resúmenes, tareas y facts se quedan (§3, retentionDays).
+     */
     suspend fun applyRetention() {
         val cutoff = retentionCutoff(System.currentTimeMillis(), container.settings.current().retentionDays) ?: return
-        db.segments().deleteOlderThan(cutoff)
+        db.withWriteTransaction {
+            db.segments().deleteOlderThan(cutoff)
+            db.tasks().dropQuotesOlderThan(cutoff)
+            db.chat().deleteOlderThan(cutoff)
+        }
+        flushWal()
     }
 
     /** Lo sacado de lo olvidado ([fromForgotten]) y los facts sugeridos; el reprocesado rehace las sugerencias. */

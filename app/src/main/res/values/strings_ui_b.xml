@@ -254,7 +254,7 @@
 
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>
-    <string name="privacy_retention_desc">Cuánto tiempo se guarda el texto literal de lo que se oye. Los resúmenes, tareas y recuerdos se conservan.</string>
+    <string name="privacy_retention_desc">Cuánto tiempo se guarda el texto literal de lo que se oye, con la cita de cada tarea y el chat de Preguntar. Los resúmenes, tareas y recuerdos se conservan.</string>
     <string name="privacy_retention_days">%1$d días</string>
     <string name="privacy_retention_never">No borrar nunca</string>
     <string name="privacy_retention_default">Recomendado</string>

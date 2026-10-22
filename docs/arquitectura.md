@@ -174,7 +174,7 @@ data class AppSettings(
   val asrModelId: String = "canary-180m-es",
   val downloadWifiOnly: Boolean = true,        // modelos ASR: descargar solo con Wi-Fi
   val batterySaver: Boolean = true,            // batería < 20 % y sin cargar → se encola sin transcribir
-  val retentionDays: Int = 90,                 // transcripción literal; 0 = no borrar. Resúmenes, tareas y facts se quedan
+  val retentionDays: Int = 90,                 // transcripción literal, cita de las tareas y chat; 0 = no borrar. Resúmenes, tareas y facts se quedan
   val secureScreen: Boolean = true,            // FLAG_SECURE
   val quickReminders: Boolean = true,          // detectar "recuérdame…" al momento
   val callFolder: String? = null,              // árbol SAF de la grabadora de llamadas del teléfono (§5.5)

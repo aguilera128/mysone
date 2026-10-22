@@ -259,6 +259,13 @@ interface TaskDao {
 
     @Query("SELECT * FROM task ORDER BY createdAt")
     suspend fun all(): List<TaskItem>
+
+    /** Retención: la cita literal de las tareas de conversaciones que terminaron antes de [ts]. La tarea se queda. */
+    @Query(
+        "UPDATE task SET sourceQuote = NULL WHERE sourceQuote IS NOT NULL AND conversationId IN " +
+            "(SELECT id FROM conversation WHERE endedAt < :ts)",
+    )
+    suspend fun dropQuotesOlderThan(ts: Long): Int
 }
 
 @Dao
@@ -330,6 +337,10 @@ interface ChatDao {
 
     @Query("DELETE FROM chat_message WHERE id IN (:ids)")
     suspend fun delete(ids: List<Long>)
+
+    /** Retención: las respuestas copian fragmentos literales; se van con la transcripción. */
+    @Query("DELETE FROM chat_message WHERE createdAt < :ts")
+    suspend fun deleteOlderThan(ts: Long): Int
 
     @Query("SELECT * FROM chat_message ORDER BY createdAt, id")
     suspend fun all(): List<ChatMessage>

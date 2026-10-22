@@ -461,7 +461,9 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
 - **Voz del dueño** (`OwnerVoice`): Ajustes › Transcripción › Quién habla › «Registrar mi voz». Se lee un texto en voz
   alta; `AudioCapture` (con su VAD, y en debug `files/debug/mic.pcm`) junta 15 s de voz y la huella es la media de sus
   ventanas. Si la escucha estaba en marcha se pausa 2 min y se reanuda al acabar (si no, lo leído sería otra
-  conversación). Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
+  conversación). Mientras graba la pantalla no se apaga, y salir de ella (Inicio, otra app, pantalla apagada; girar
+  no) cancela el registro: con la escucha en pausa el servicio sigue en primer plano y el micro seguiría abierto,
+  juntando como del dueño cualquier voz. Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
   no se exporta, no tiene copia de seguridad y «Borrar todo» la borra; borrar el modelo de voces también (sin él no
   sirve, y no quedaría a la vista «Borrar mi voz»). Afecta a lo que se importe después.
 - **Medido** (09; 14 voces reales de MLS-es en 28 conversaciones de 2 y 3 voces): con el hablante correcto el 96 % del

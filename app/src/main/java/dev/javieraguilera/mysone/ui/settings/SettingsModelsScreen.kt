@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone.ui.settings
 import android.media.MediaRecorder
 import android.net.Uri
 import android.text.format.Formatter
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -52,7 +54,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -404,6 +408,12 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         ),
     )
     enroll?.let { EnrollDialog(it, onStart = vm::startEnroll, onCancel = vm::cancelEnroll) }
+    // Fuera de la pantalla (Inicio, otra app, pantalla apagada) el micro sigue abierto con la escucha en pausa y juntaría
+    // como tuya la voz de quien se oiga: se cancela. Al girar no, que la actividad se recrea y el ViewModel sigue.
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (vm.enroll.value is Enroll.Recording && activity?.isChangingConfigurations != true) vm.cancelEnroll()
+    }
     pendingFolder?.let { (_, count) ->
         AlertDialog(
             onDismissRequest = { vm.confirmCallFolder(null) },
@@ -782,7 +792,8 @@ private fun EnrollDialog(state: Enroll, onStart: () -> Unit, onCancel: () -> Uni
                     is Enroll.Recording -> {
                         val total = OwnerVoice.ENROLL_SAMPLES / SAMPLE_RATE
                         Progress(stringResource(R.string.voices_enroll_progress, (state.progress * total).toInt(), total), state.progress)
-                        LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth().height(4.dp))
+                        // Que no se apague a media lectura: apagada, el registro se cancela.
+                        LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth().height(4.dp).keepScreenOn())
                     }
                     Enroll.Saving -> Progress(stringResource(R.string.voices_enroll_saving), null)
                     is Enroll.Failed -> StatusLine(stringResource(state.message), ok = false)

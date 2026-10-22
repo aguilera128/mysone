@@ -26,4 +26,5 @@
     <string name="asr_import_error_read">No se ha podido leer el archivo de audio.</string>
     <string name="asr_import_error_no_speech">No se ha encontrado voz en el archivo.</string>
     <string name="asr_import_cancelled">Importación cancelada.</string>
+    <string name="asr_import_already">Esta llamada ya estaba transcrita.</string>
 </resources>

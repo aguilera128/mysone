@@ -31,6 +31,7 @@
     <string name="conv_state_failed">No se pudo procesar</string>
     <string name="conv_noise">Ruido de fondo</string>
     <string name="conv_imported">Importada</string>
+    <string name="conv_call">Llamada</string>
     <plurals name="conv_tasks_count">
         <item quantity="one">%d tarea</item>
         <item quantity="other">%d tareas</item>

@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.StrictMode
 import dev.javieraguilera.mysone.ai.ProcessWorker
+import dev.javieraguilera.mysone.asr.CallImporter
 import dev.javieraguilera.mysone.asr.fallbackModelId
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.tasks.MaintenanceWorker
@@ -41,6 +42,8 @@ class MysoneApp : Application() {
                 .collect { container.settings.update { s -> fallbackModelId(models.installs.value, s.asrModelId)?.let { s.copy(asrModelId = it) } ?: s } }
         }
         container.appScope.launch { ListeningController.leaveNeedsModelOnInstall(container.models.installs) }
+        // Grabaciones de llamadas: el vigilante de MediaStore, por si se perdió (actualización, force-stop).
+        container.appScope.launch { if (container.settings.current().callFolder != null) CallImporter.watch(this@MysoneApp) }
     }
 
     /** Solo con DSN en la compilación. Ni PII, ni breadcrumbs, ni adjuntos, ni textos de error: solo tipo y pila. */

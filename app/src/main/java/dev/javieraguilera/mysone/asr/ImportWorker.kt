@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.net.toUri
@@ -16,6 +17,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.data.ConvSource
 import dev.javieraguilera.mysone.data.ConvState
@@ -32,10 +34,15 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     private var startedAt: Long? = null // de la conversación creada, para decir en qué día ha quedado
     private var conversationId: Long? = null // para quitarla de la lista si después se borra
     private var partial = false // el final del fichero no se pudo leer: se guardó lo de antes
+    private var sourceModified: Long? = null // fecha del fichero al empezar: si cambia, no se borra
 
     override suspend fun doWork(): Result {
         val uri = inputData.getString(KEY_URI)?.toUri() ?: return Result.failure()
+        val callToken = inputData.getString(KEY_CALL_TOKEN)
+        val call = callToken != null
         val c = applicationContext.container
+        // Llamada encolada antes de «Dejar de importar» o de volver a elegir la carpeta: ni se lee ni se borra.
+        if (callToken != null && !CallImporter.isCurrent(applicationContext, callToken)) return Result.success(workDataOf(KEY_SKIPPED to true))
         val wipes = AudioImporter.wipes
         applicationContext.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, applicationContext.getString(R.string.asr_import_channel_name), NotificationManager.IMPORTANCE_LOW),
@@ -44,11 +51,13 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val error = try {
             if (c.transcriber.acquire()) {
                 try {
-                    import(uri, c, wipes)
+                    import(uri, c, wipes, if (call) ConvSource.CALL else ConvSource.IMPORT)
                 } finally {
                     c.transcriber.release()
                 }
             } else {
+                // Llamada: que el próximo escaneo la vuelva a encolar cuando el modelo cargue.
+                if (callToken != null) CallImporter.unsee(applicationContext, uri)
                 R.string.asr_import_error_no_model
             }
         } catch (e: CancellationException) {
@@ -63,6 +72,17 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             applicationContext.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
         }
+        // La grabación de una llamada ya transcrita entera sobra: Mysone no guarda audio (opción de Ajustes, mirada
+        // ahora: apagarla salva lo que estaba en cola). Si falló o el final estaba dañado se queda.
+        if (callToken != null && error == null && !partial && c.settings.current().callDeleteAfter && CallImporter.isCurrent(applicationContext, callToken) &&
+            sourceModified != null && AudioImporter.lastModified(applicationContext, uri) == sourceModified
+        ) {
+            try {
+                DocumentsContract.deleteDocument(applicationContext.contentResolver, uri)
+            } catch (e: Exception) { // FileNotFoundException, SecurityException, UnsupportedOperationException…
+                Log.w(TAG, "No se ha podido borrar la grabación: ${e.javaClass.simpleName}")
+            }
+        }
         // Los errores esperables salen como éxito con mensaje: un Result.failure haría fallar también
         // las importaciones encoladas detrás (van encadenadas en un único trabajo).
         return if (error == null) {
@@ -73,7 +93,14 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     }
 
     /** Devuelve el id del texto de error, o null si se ha creado la conversación. [wipes]: el de AudioImporter al empezar. */
-    private suspend fun import(uri: Uri, c: AppContainer, wipes: Int): Int? {
+    private suspend fun import(uri: Uri, c: AppContainer, wipes: Int, source: String): Int? {
+        // La fecha, antes de decodificar: si entretanto se suelta el permiso de la carpeta, después ya no se lee.
+        val modified = AudioImporter.lastModified(applicationContext, uri)
+        sourceModified = modified
+        // Lo que dura según la cabecera: el extractor a veces da por terminado un fichero dañado sin lanzar nada.
+        val expectedMs = if (source == ConvSource.CALL) AudioImporter.durationMs(applicationContext, uri) else null
+        // Una llamada encolada dos veces (o ya importada por otro camino) termina en esa fecha: no se repite.
+        if (source == ConvSource.CALL && modified != null && CallImporter.imported(applicationContext, modified)) return R.string.asr_import_already
         val pieces = ArrayList<Piece>()
         var total = 0L
         var shownAt = 0L
@@ -109,18 +136,21 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (pieces.isEmpty()) return R.string.asr_import_error_no_speech
 
         val durationMs = total * 1000 / SAMPLE_RATE
+        if (expectedMs != null && durationMs < expectedMs - 2_000) partial = true // se queda la grabación
         // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella y su duración.
-        val startedAt = (AudioImporter.lastModified(applicationContext, uri) ?: System.currentTimeMillis()) - durationMs
+        val startedAt = (modified ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
         // En una transacción: que nadie vea la conversación READY a medio llenar. Y si entretanto se ha hecho
         // "Borrar todo", nada: o se ve aquí, o el borrado viene después y se lleva también esto.
         val id = c.db.withWriteTransaction<Long?> {
             if (AudioImporter.wipes != wipes) return@withWriteTransaction null
+            // «Olvidar los últimos N min» mientras se transcribía (una llamada que acaba de colgarse, sobre todo).
+            if (ListeningController.isForgotten(startedAt, startedAt + durationMs)) return@withWriteTransaction null
             val convId = c.db.conversations().insert(
                 Conversation(
                     startedAt = startedAt,
                     endedAt = startedAt + durationMs,
-                    source = ConvSource.IMPORT,
+                    source = source,
                     state = ConvState.READY,
                 ),
             )
@@ -155,6 +185,8 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     companion object {
         const val KEY_URI = "uri"
+        const val KEY_CALL_TOKEN = "callToken"
+        const val KEY_SKIPPED = "skipped"
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
         const val KEY_STARTED_AT = "startedAt"

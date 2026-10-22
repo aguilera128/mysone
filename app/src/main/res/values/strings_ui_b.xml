@@ -214,6 +214,25 @@
     <string name="privacy_secure_screen_desc">Impide capturas y grabaciones de pantalla, y oculta el contenido en la vista de apps recientes.</string>
     <string name="privacy_section_export">Exportar</string>
     <string name="privacy_export_desc">Guarda en un archivo JSON tus conversaciones, transcripciones, tareas, recuerdos, chat y ajustes. No incluye la clave de la IA.</string>
+    <string name="models_section_calls">Llamadas</string>
+    <string name="models_calls_desc">Android no deja a ninguna app grabar las llamadas, pero la grabadora de tu teléfono sí (en Samsung: Teléfono › Ajustes › Grabar llamadas). Elige la carpeta donde las guarda y Mysone transcribirá cada llamada al terminar, en el móvil.</string>
+    <string name="models_calls_pick">Elegir carpeta de grabaciones</string>
+    <string name="models_calls_folder">Carpeta: %1$s</string>
+    <string name="models_calls_unreadable">No se puede leer la carpeta. Elígela otra vez.</string>
+    <string name="models_calls_delete">Borrar la grabación al transcribirla</string>
+    <string name="models_calls_delete_desc">Se queda solo el texto. Si la transcripción falla, la grabación no se toca.</string>
+    <string name="models_calls_stop">Dejar de importar llamadas</string>
+    <string name="models_calls_existing_title">Grabaciones que ya hay</string>
+    <plurals name="models_calls_existing_message">
+        <item quantity="one">En la carpeta hay %1$d grabación sin transcribir. ¿La transcribo también, o solo las llamadas a partir de ahora?</item>
+        <item quantity="other">En la carpeta hay %1$d grabaciones sin transcribir. ¿Las transcribo también, o solo las llamadas a partir de ahora?</item>
+    </plurals>
+    <plurals name="models_calls_existing_message_delete">
+        <item quantity="one">En la carpeta hay %1$d grabación sin transcribir. ¿La transcribo también, o solo las llamadas a partir de ahora? Al transcribirla se borrará el audio.</item>
+        <item quantity="other">En la carpeta hay %1$d grabaciones sin transcribir. ¿Las transcribo también, o solo las llamadas a partir de ahora? Al transcribirlas se borrará su audio.</item>
+    </plurals>
+    <string name="models_calls_existing_all">Transcribir también</string>
+    <string name="models_calls_existing_new">Solo las nuevas</string>
     <string name="privacy_export">Exportar datos</string>
     <string name="privacy_export_title">Antes de exportar</string>
     <string name="privacy_export_warning">El archivo contiene las palabras de otras personas. Compartirlo fuera de tu uso personal puede vulnerar su intimidad o su protección de datos. Guárdalo en un lugar seguro y no lo difundas.</string>

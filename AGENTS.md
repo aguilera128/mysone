@@ -52,7 +52,9 @@ búsqueda funcionan igual en local. Detalle y costes: `docs/investigacion/05`.
 ## Limitaciones conocidas (v1)
 
 - Solo Android. No graba llamadas (Android lo impide) y, mientras otra app usa el micro, la
-  escucha queda en «micrófono ocupado» y se registra el hueco.
+  escucha queda en «micrófono ocupado» y se registra el hueco. Lo que sí hace: transcribir sola cada
+  grabación de la grabadora del teléfono (Samsung: `Recordings/Call`) si se elige esa carpeta en Ajustes ›
+  Transcripción, y borrarla después (§5.5). WhatsApp y otras VoIP quedan fuera: el teléfono no las graba.
 - Tras reiniciar o actualizar, Android no deja reabrir el micro solo: sale «Toca para reanudar».
 - Monosílabos aislados («Sí.», «No.») no llegan al reconocedor (VAD con 0,25 s mínimo, a propósito:
   `docs/investigacion/08`). Sin separación de voces (quién habla) ni audio guardado.

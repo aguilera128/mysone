@@ -14,6 +14,7 @@ import kotlinx.serialization.Serializable
 object ConvSource {
     const val MIC = "MIC"
     const val IMPORT = "IMPORT"
+    const val CALL = "CALL" // grabación de llamada importada sola desde la carpeta elegida (CallImporter)
 }
 
 object ConvState {

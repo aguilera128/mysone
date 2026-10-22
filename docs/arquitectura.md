@@ -76,7 +76,7 @@ data class Conversation(
   @PrimaryKey(autoGenerate = true) val id: Long = 0,
   val startedAt: Long,
   val endedAt: Long,
-  val source: String,            // ConvSource.MIC | IMPORT
+  val source: String,            // ConvSource.MIC | IMPORT | CALL (grabación de llamada, §5.5)
   val state: String,             // ConvState.OPEN | READY | PROCESSING | DONE | FAILED
   val title: String? = null,
   val summary: String? = null,
@@ -170,6 +170,8 @@ data class AppSettings(
   val retentionDays: Int = 90,                 // transcripción literal; 0 = no borrar. Resúmenes, tareas y facts se quedan
   val secureScreen: Boolean = true,            // FLAG_SECURE
   val quickReminders: Boolean = true,          // detectar "recuérdame…" al momento
+  val callFolder: String? = null,              // árbol SAF de la grabadora de llamadas del teléfono (§5.5)
+  val callDeleteAfter: Boolean = true,         // borrar la grabación cuando ya está transcrita
   val ai: AiSettings = AiSettings(),
 )
 data class AiSettings(
@@ -252,7 +254,7 @@ class ModelManager(context: Context) {
 
 // asr/AudioImporter.kt (B2)
 object AudioImporter {
-  fun enqueue(context: Context, uri: Uri)   // copia/lee con SAF, ImportWorker decodifica, VAD, transcribe, crea conversación IMPORT → READY
+  fun enqueue(context: Context, uri: Uri, callToken: String? = null)   // lee con SAF, ImportWorker decodifica, VAD, transcribe, crea conversación IMPORT (o CALL) → READY
   fun observe(context: Context): Flow<List<ImportProgress>>
 }
 data class ImportProgress(val id: UUID, val name: String, val progress: Float, val done: Boolean, val error: String?)
@@ -395,6 +397,29 @@ SAF (`OpenDocument`, `audio/*`) → `ImportWorker` (`CoroutineWorker` con `setFo
 propio (otra instancia de `VadSegmenter`) → `transcriber.acquire()` → segmentos → conversación
 `source=IMPORT` (`startedAt` = fecha de modificación del fichero − duración, o ahora − duración) →
 `READY` → `ai.onConversationReady`. Sirve también para probar la app en el emulador.
+
+**Llamadas** (`CallImporter`). Android no deja a ninguna app de la tienda captar el audio de una llamada
+(`VOICE_CALL` exige `CAPTURE_AUDIO_OUTPUT`, de sistema; durante la llamada el micro de las demás llega en
+silencio y la escucha solo apunta el hueco `MIC_BUSY`). La grabadora del teléfono sí puede (Samsung:
+`Recordings/Call`, `.m4a`). En Ajustes › Transcripción el dueño elige esa carpeta (`OpenDocumentTree`,
+permiso persistente de leer y borrar, `AppSettings.callFolder`) y cada grabación pasa por la misma
+`ImportWorker` como conversación `source=CALL`. Qué dispara el escaneo: un trabajo con disparador de MediaStore
+(`addContentUriTrigger` sobre `MediaStore.Audio`, que se vuelve a armar al acabar), `MaintenanceWorker` cada
+30 min y elegir la carpeta. Solo entran los ficheros de audio quietos desde hace 60 s (una llamada en curso aún
+crece; si hay alguno sin asentar se vuelve a mirar al minuto), no encolados ya (documentId en las preferencias
+`calls`, guardado cuando WorkManager ya tiene el trabajo) y sin conversación importada (CALL o a mano) que termine en
+su fecha de modificación (así no se repite al volver a elegir la carpeta, ni aunque se guardara solo en parte;
+ImportWorker lo comprueba otra vez antes de decodificar). Sin modelo instalado no se encola nada, y si el modelo
+no carga, la llamada vuelve a quedar pendiente.
+Cada elección de carpeta tiene su token: lo encolado con otro (tras «Dejar de importar» o al elegirla de nuevo)
+acaba sin leerse ni borrarse. El borrado se decide al terminar, con `callDeleteAfter` (por defecto) y el token
+vigentes: solo si la conversación ya está guardada entera (lo decodificado dura lo que dice la cabecera, ±2 s) y
+el fichero no ha cambiado desde que se leyó; si falla o el final estaba dañado, se queda. Como cualquier importación,
+no se guarda si cae dentro de un «Olvidar los últimos N min» hecho mientras se transcribía.
+Al elegir una carpeta con grabaciones sin transcribir se pregunta si entran también o solo las nuevas (un corte
+por fecha de modificación, que no se pierde aunque una salga y vuelva de la papelera). «Borrar todo» empieza
+soltando el permiso, parando el vigilante y olvidando la carpeta. Las llamadas de WhatsApp y otras VoIP no las graba el
+teléfono, así que quedan fuera.
 
 ---
 

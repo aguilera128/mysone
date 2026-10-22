@@ -583,7 +583,11 @@ private fun ConversationRow(item: TimelineItem.Conv, queue: QueueStatus, onClick
     val meta = joined(
         timeRange(conv.startedAt, if (open) null else conv.endedAt),
         durationLabel(conv.endedAt - conv.startedAt),
-        if (conv.source == ConvSource.IMPORT) stringResource(R.string.conv_imported) else null,
+        when (conv.source) {
+            ConvSource.IMPORT -> stringResource(R.string.conv_imported)
+            ConvSource.CALL -> stringResource(R.string.conv_call)
+            else -> null
+        },
         if (conv.isNoise) stringResource(R.string.conv_noise) else null,
     )
     val node = when {

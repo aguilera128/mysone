@@ -31,6 +31,8 @@ data class AppSettings(
     val retentionDays: Int = 90,                    // transcripción literal; 0 = no borrar
     val secureScreen: Boolean = true,               // FLAG_SECURE
     val quickReminders: Boolean = true,             // detectar "recuérdame…" al momento
+    val callFolder: String? = null,                 // URI (árbol SAF) de la carpeta de grabaciones de llamadas
+    val callDeleteAfter: Boolean = true,            // borrar la grabación cuando ya está transcrita
     val ai: AiSettings = AiSettings(),
 )
 
@@ -75,6 +77,8 @@ class SettingsStore(private val context: Context) {
         val retentionDays = intPreferencesKey("retentionDays")
         val secureScreen = booleanPreferencesKey("secureScreen")
         val quickReminders = booleanPreferencesKey("quickReminders")
+        val callFolder = stringPreferencesKey("callFolder")
+        val callDeleteAfter = booleanPreferencesKey("callDeleteAfter")
         val aiEnabled = booleanPreferencesKey("ai.enabled")
         val aiConsentAt = longPreferencesKey("ai.consentAt")
         val aiPresetId = stringPreferencesKey("ai.presetId")
@@ -100,6 +104,8 @@ class SettingsStore(private val context: Context) {
             retentionDays = (p[K.retentionDays] ?: d.retentionDays).coerceAtLeast(0),
             secureScreen = p[K.secureScreen] ?: d.secureScreen,
             quickReminders = p[K.quickReminders] ?: d.quickReminders,
+            callFolder = p[K.callFolder],
+            callDeleteAfter = p[K.callDeleteAfter] ?: d.callDeleteAfter,
             ai = AiSettings(
                 enabled = p[K.aiEnabled] ?: a.enabled,
                 consentAt = p[K.aiConsentAt],
@@ -125,6 +131,8 @@ class SettingsStore(private val context: Context) {
         p[K.retentionDays] = s.retentionDays
         p[K.secureScreen] = s.secureScreen
         p[K.quickReminders] = s.quickReminders
+        p.setOrRemove(K.callFolder, s.callFolder)
+        p[K.callDeleteAfter] = s.callDeleteAfter
         p[K.aiEnabled] = s.ai.enabled
         p.setOrRemove(K.aiConsentAt, s.ai.consentAt)
         p[K.aiPresetId] = s.ai.presetId

@@ -8,6 +8,7 @@ import androidx.room3.withWriteTransaction
 import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.ai.DigestBuilder
 import dev.javieraguilera.mysone.asr.AudioImporter
+import dev.javieraguilera.mysone.asr.CallImporter
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.capture.ResumeNotifier
@@ -162,6 +163,8 @@ class DataManager(private val container: AppContainer) {
      * "Toca para reanudar", que si no seguirían en Hoy y MaintenanceWorker volvería a avisar (§6).
      */
     suspend fun deleteAll() {
+        // Primero la carpeta de llamadas (espera a un escaneo en marcha), para que nada vuelva a encolarse.
+        CallImporter.clearFolder(container.app)
         // Antes que la BD: una importación a medias guardaría su conversación después del borrado.
         AudioImporter.cancelAll(container.app)
         _epoch.incrementAndGet()

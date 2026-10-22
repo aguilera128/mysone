@@ -307,7 +307,11 @@ private fun Header(conv: Conversation, transcribing: Boolean, queue: QueueStatus
             joined(
                 timeRange(conv.startedAt, if (open) null else conv.endedAt),
                 durationLabel(conv.endedAt - conv.startedAt),
-                if (conv.source == ConvSource.IMPORT) stringResource(R.string.conv_imported) else null,
+                when (conv.source) {
+                    ConvSource.IMPORT -> stringResource(R.string.conv_imported)
+                    ConvSource.CALL -> stringResource(R.string.conv_call)
+                    else -> null
+                },
             ),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -9,6 +9,7 @@ import android.provider.OpenableColumns
 import androidx.core.content.edit
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Operation
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -31,20 +32,24 @@ object AudioImporter {
     private const val PREFS = "imports"
     private const val STALE_MS = 3_600_000L
 
-    /** [uri] de SAF (`OpenDocument` con tipo audio). ImportWorker decodifica, pasa el VAD, transcribe y crea la conversación IMPORT → READY. */
-    fun enqueue(context: Context, uri: Uri) {
+    /**
+     * [uri] de SAF (`OpenDocument` con tipo audio, o un documento de la carpeta de llamadas). ImportWorker decodifica,
+     * pasa el VAD, transcribe y crea la conversación IMPORT (o CALL, con el [callToken] de la carpeta elegida) → READY.
+     */
+    fun enqueue(context: Context, uri: Uri, callToken: String? = null): Operation {
         // El permiso de OpenDocument no sobrevive a la actividad: lo hacemos persistente hasta que acabe el worker.
+        // (Los de la carpeta de llamadas se leen con el permiso del árbol: aquí da SecurityException y no pasa nada.)
         try {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
         }
         val name = displayName(context, uri) ?: context.getString(R.string.asr_import_default_name)
         val request = OneTimeWorkRequestBuilder<ImportWorker>()
-            .setInputData(workDataOf(ImportWorker.KEY_URI to uri.toString()))
+            .setInputData(workDataOf(ImportWorker.KEY_URI to uri.toString(), ImportWorker.KEY_CALL_TOKEN to callToken))
             .addTag(TAG)
             .build()
         prefs(context).edit { putString(request.id.toString(), "${System.currentTimeMillis()}|$name") }
-        WorkManager.getInstance(context).enqueueUniqueWork(TAG, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        return WorkManager.getInstance(context).enqueueUniqueWork(TAG, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     /**
@@ -65,7 +70,8 @@ object AudioImporter {
             context.container.db.conversations().observeImportIds(),
         ) { all, alive ->
             val existing = alive.toSet()
-            val infos = all.filter { info -> info.outputData.getLong(ImportWorker.KEY_CONVERSATION_ID, 0L).let { it == 0L || it in existing } }
+            // Fuera también las llamadas de una carpeta que ya no está elegida: no se han tocado.
+            val infos = all.filter { info -> !info.outputData.getBoolean(ImportWorker.KEY_SKIPPED, false) && info.outputData.getLong(ImportWorker.KEY_CONVERSATION_ID, 0L).let { it == 0L || it in existing } }
             val prefs = prefs(context)
             val saved = prefs.all
             // WorkManager acaba olvidando los trabajos terminados: sus nombres sobran, igual que los de conversaciones
@@ -105,10 +111,12 @@ object AudioImporter {
     suspend fun cancelAll(context: Context) {
         wipes++
         withContext(Dispatchers.IO) { WorkManager.getInstance(context).cancelUniqueWork(TAG).result.get() }
-        // Solo las importaciones piden permisos persistentes.
+        // Solo las importaciones piden permisos persistentes (y la carpeta de llamadas, que además tiene el de borrar).
         context.contentResolver.persistedUriPermissions.forEach {
+            val flags = (if (it.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                (if (it.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
             try {
-                context.contentResolver.releasePersistableUriPermission(it.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.contentResolver.releasePersistableUriPermission(it.uri, flags)
             } catch (_: SecurityException) {
             }
         }
@@ -129,7 +137,7 @@ object AudioImporter {
         null
     }
 
-    private fun durationMs(context: Context, uri: Uri): Long? = try {
+    internal fun durationMs(context: Context, uri: Uri): Long? = try {
         MediaMetadataRetriever().use {
             it.setDataSource(context, uri)
             it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { ms -> ms > 0 }

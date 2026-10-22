@@ -9,6 +9,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import dev.javieraguilera.mysone.asr.CallImporter
 import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.container
 import java.io.File
@@ -32,6 +33,8 @@ class MaintenanceWorker(context: Context, params: WorkerParameters) : CoroutineW
         orphans(pendingDir(app).listFiles()?.toList().orEmpty(), known, now).forEach { it.delete() }
         // Red de seguridad: un force-stop borra las alarmas y aquí vuelven; avisa también de las vencidas sin avisar.
         c.reminders.rescheduleAll()
+        // Grabaciones de llamadas que el vigilante de MediaStore no haya visto (o con la app parada entonces).
+        CallImporter.scan(app)
 
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (now - prefs.getLong(KEY_RETENTION_AT, 0) >= DAY_MS) {

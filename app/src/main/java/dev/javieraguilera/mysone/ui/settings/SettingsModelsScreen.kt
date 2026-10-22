@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -48,6 +50,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -56,6 +59,7 @@ import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.AsrModel
 import dev.javieraguilera.mysone.asr.AudioImporter
+import dev.javieraguilera.mysone.asr.CallImporter
 import dev.javieraguilera.mysone.asr.DownloadWait
 import dev.javieraguilera.mysone.asr.ImportProgress
 import dev.javieraguilera.mysone.asr.ModelInstall
@@ -74,6 +78,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -148,6 +153,55 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
         _duplicate.value = null
         if (importAgain) AudioImporter.enqueue(container.app, uri)
     }
+
+    // ---- Llamadas (CallImporter) ----
+    // Lo que cambia ajustes o permisos va en appScope: al salir de la pantalla viewModelScope se cancela.
+
+    val callFolder: StateFlow<String?> = container.settings.data.map { it.callFolder }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val callDeleteAfter: StateFlow<Boolean> = container.settings.data.map { it.callDeleteAfter }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings().callDeleteAfter)
+
+    /** Para volver a comprobar si se lee al elegir otra vez la misma carpeta (callFolder no cambia y no emitiría). */
+    private val recheck = MutableStateFlow(0)
+
+    /** Si se ha retirado el permiso o se ha borrado la carpeta, para pedir que se elija otra vez. */
+    val callFolderReadable: StateFlow<Boolean> = combine(callFolder, recheck) { f, _ -> f }
+        .map { f -> f == null || CallImporter.recordings(container.app, f.toUri()) != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    /** Carpeta recién elegida con grabaciones aún sin transcribir, con cuántas, a la espera de decidir si se importan. */
+    private val _pendingFolder = MutableStateFlow<Pair<Uri, Int>?>(null)
+    val pendingFolder: StateFlow<Pair<Uri, Int>?> = _pendingFolder.asStateFlow()
+
+    // El permiso persistente solo se pide en setFolder, ya decidido: sin respuesta al diálogo no se queda ninguno.
+    fun pickCallFolder(tree: Uri) {
+        container.appScope.launch {
+            val pending = CallImporter.pendingCount(container.app, tree) ?: return@launch // ilegible
+            if (pending == 0) setCallFolder(tree, importExisting = false) else _pendingFolder.value = tree to pending
+        }
+    }
+
+    /** [importExisting] null: el dueño ha cancelado y la carpeta no se usa. */
+    fun confirmCallFolder(importExisting: Boolean?) {
+        val tree = _pendingFolder.value?.first ?: return
+        _pendingFolder.value = null
+        if (importExisting != null) container.appScope.launch { setCallFolder(tree, importExisting) }
+    }
+
+    private suspend fun setCallFolder(tree: Uri, importExisting: Boolean) {
+        CallImporter.setFolder(container.app, tree, importExisting)
+        recheck.update { it + 1 }
+    }
+
+    fun setCallDeleteAfter(on: Boolean) {
+        container.appScope.launch { container.settings.update { it.copy(callDeleteAfter = on) } }
+    }
+
+    fun stopCalls() {
+        container.appScope.launch { CallImporter.clearFolder(container.app) }
+    }
 }
 
 /** Acciones de la pantalla; con valores vacíos por defecto para las vistas previas. */
@@ -159,7 +213,13 @@ class ModelActions(
     val selfTest: (String) -> Unit = {},
     val pickAudio: () -> Unit = {},
     val setWifiOnly: (Boolean) -> Unit = {},
+    val pickCallFolder: () -> Unit = {},
+    val setCallDeleteAfter: (Boolean) -> Unit = {},
+    val stopCalls: () -> Unit = {},
 )
+
+/** Carpeta de llamadas para la pantalla; null sin elegir. */
+class CallsState(val folder: String? = null, val deleteAfter: Boolean = true, val readable: Boolean = true)
 
 @Composable
 fun SettingsModelsScreen(onBack: () -> Unit) {
@@ -171,7 +231,12 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
     val tests by vm.tests.collectAsStateWithLifecycle()
     val imports by vm.imports.collectAsStateWithLifecycle()
     val duplicate by vm.duplicate.collectAsStateWithLifecycle()
+    val callFolder by vm.callFolder.collectAsStateWithLifecycle()
+    val callDeleteAfter by vm.callDeleteAfter.collectAsStateWithLifecycle()
+    val callReadable by vm.callFolderReadable.collectAsStateWithLifecycle()
+    val pendingFolder by vm.pendingFolder.collectAsStateWithLifecycle()
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::import) }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(vm::pickCallFolder) }
     SettingsModelsContent(
         catalog = vm.catalog,
         installs = installs,
@@ -181,6 +246,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         recommendedId = vm.recommendedId,
         tests = tests,
         imports = imports,
+        calls = CallsState(callFolder, callDeleteAfter, callReadable),
         onBack = onBack,
         actions = ModelActions(
             download = vm::download,
@@ -190,8 +256,23 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
             selfTest = vm::selfTest,
             pickAudio = { pick.launch(arrayOf("audio/*")) },
             setWifiOnly = vm::setWifiOnly,
+            pickCallFolder = { pickFolder.launch(CallImporter.SAMSUNG_FOLDER) },
+            setCallDeleteAfter = vm::setCallDeleteAfter,
+            stopCalls = vm::stopCalls,
         ),
     )
+    pendingFolder?.let { (_, count) ->
+        AlertDialog(
+            onDismissRequest = { vm.confirmCallFolder(null) },
+            title = { Text(stringResource(R.string.models_calls_existing_title)) },
+            text = {
+                val res = if (callDeleteAfter) R.plurals.models_calls_existing_message_delete else R.plurals.models_calls_existing_message
+                Text(pluralStringResource(res, count, count))
+            },
+            confirmButton = { TextButton(onClick = { vm.confirmCallFolder(true) }) { Text(stringResource(R.string.models_calls_existing_all)) } },
+            dismissButton = { TextButton(onClick = { vm.confirmCallFolder(false) }) { Text(stringResource(R.string.models_calls_existing_new)) } },
+        )
+    }
     duplicate?.let { (_, startedAt) ->
         ConfirmDialog(
             title = stringResource(R.string.models_import_duplicate_title),
@@ -229,6 +310,7 @@ private fun SettingsModelsContent(
     imports: List<ImportProgress>,
     onBack: () -> Unit,
     actions: ModelActions,
+    calls: CallsState = CallsState(),
 ) {
     var toDelete by rememberSaveable { mutableStateOf<String?>(null) }
     // La importación usa el elegido (MysoneApp elige otro instalado si falta), no uno cualquiera.
@@ -276,6 +358,32 @@ private fun SettingsModelsContent(
             ) { Text(stringResource(R.string.models_import_pick)) }
             if (!selectedInstalled) Note(stringResource(R.string.models_import_need_model))
             imports.forEach { ImportRow(it) }
+
+            SectionHeader(stringResource(R.string.models_section_calls))
+            Note(stringResource(R.string.models_calls_desc))
+            if (calls.folder == null || !calls.readable) {
+                if (calls.folder != null) Note(stringResource(R.string.models_calls_unreadable), color = MaterialTheme.colorScheme.error)
+                Button(
+                    onClick = actions.pickCallFolder,
+                    enabled = selectedInstalled,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                ) { Text(stringResource(R.string.models_calls_pick)) }
+                if (!selectedInstalled) Note(stringResource(R.string.models_import_need_model))
+            }
+            // Antes de elegir la carpeta también: así se puede decidir conservar el audio del primer lote.
+            SwitchRow(
+                title = stringResource(R.string.models_calls_delete),
+                summary = stringResource(R.string.models_calls_delete_desc),
+                checked = calls.deleteAfter,
+                onCheckedChange = actions.setCallDeleteAfter,
+            )
+            if (calls.folder != null) {
+                if (calls.readable) Note(stringResource(R.string.models_calls_folder, CallImporter.folderName(calls.folder.toUri())))
+                OutlinedButton(
+                    onClick = actions.stopCalls,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                ) { Text(stringResource(R.string.models_calls_stop)) }
+            }
             Spacer(Modifier.height(24.dp))
         }
     }

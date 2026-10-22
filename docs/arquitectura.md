@@ -305,7 +305,8 @@ class DataManager(container: AppContainer) {
 
 // AppContainer (A)
 class AppContainer(val app: Application) {
-  val appScope: CoroutineScope        // SupervisorJob + Dispatchers.Default
+  val appScope: CoroutineScope        // SupervisorJob + Dispatchers.Default; aquí escriben los ViewModels:
+                                      // viewModelScope se cancela al cerrar la pantalla o cambiar de pestaña
   val db: AppDatabase
   val settings: SettingsStore; val secrets: SecretStore
   val models: ModelManager; val transcriber: Transcriber

@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class MemoryViewModel(container: AppContainer) : ViewModel() {
+class MemoryViewModel(private val container: AppContainer) : ViewModel() {
     private val dao = container.db.facts()
 
     val confirmed: StateFlow<List<Fact>> = observe(FactState.CONFIRMED)
@@ -34,7 +34,8 @@ class MemoryViewModel(container: AppContainer) : ViewModel() {
     /** "Deshacer": falla si entretanto se borró su conversación (FK); entonces no se recupera. */
     fun restore(f: Fact) = launch { runCatching { dao.insert(f) } }
 
+    /** En appScope, como en Tareas: al cambiar de pestaña viewModelScope se cancela y el borrado se perdería. */
     private fun launch(block: suspend () -> Unit) {
-        viewModelScope.launch { block() }
+        container.appScope.launch { block() }
     }
 }

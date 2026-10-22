@@ -25,6 +25,9 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
     private fun observe(state: String) =
         dao.observeByState(state).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // Las escrituras van en appScope: cambiar de pestaña saca la pantalla de la pila y cancela viewModelScope, y un
+    // borrado que esperaba la conexión de escritura no llegaría a hacerse.
+
     fun accept(t: TaskItem) = save(t.id) { it.copy(state = TaskState.OPEN) }
 
     fun dismiss(t: TaskItem) = save(t.id) { it.copy(state = TaskState.DISMISSED) }
@@ -41,7 +44,7 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun create(text: String, remindAt: Long?) {
-        viewModelScope.launch {
+        container.appScope.launch {
             val t = TaskItem(text = text.trim(), state = TaskState.OPEN, remindAt = remindAt, createdAt = System.currentTimeMillis())
             val id = dao.insert(t)
             container.reminders.schedule(t.copy(id = id))
@@ -49,7 +52,7 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun delete(t: TaskItem) {
-        viewModelScope.launch {
+        container.appScope.launch {
             container.reminders.cancel(t.id)
             dao.delete(t.id)
         }
@@ -57,7 +60,7 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
 
     /** "Deshacer" tras borrar. Falla si entretanto se borró su conversación (FK); entonces no se recupera. */
     fun restore(t: TaskItem) {
-        viewModelScope.launch {
+        container.appScope.launch {
             runCatching { dao.insert(t) }.onSuccess { container.reminders.schedule(t) }
         }
     }
@@ -67,7 +70,7 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
      * o Conversación cambien entretanto no se deshace. Si ya no existe, nada.
      */
     private fun save(id: Long, change: (TaskItem) -> TaskItem) {
-        viewModelScope.launch {
+        container.appScope.launch {
             val t = dao.get(id)?.let(change) ?: return@launch
             dao.update(t)
             // El programador solo pone alarma si está OPEN y la hora es futura.

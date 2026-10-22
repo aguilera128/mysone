@@ -604,7 +604,8 @@ Sin IA configurada: la pantalla lo explica y ofrece la búsqueda local.
 ### 7.6 Resumen diario (`DigestBuilder`)
 Para cada día anterior a hoy con conversaciones `DONE` no ruido y sin `daily_digest`: entrada =
 títulos + resúmenes + tareas del día → `{"summary": "...", "highlights": ["..."]}`. Máximo 7 días por
-pasada (los más recientes).
+pasada (los más recientes). Mira los últimos 30 días y, además, los días cuyo resumen quitó borrar u olvidar algo
+(`DigestBuilder.redo`, en las preferencias `digest_attempts`), hasta rehacerlo o quedarse sin nada que resumir.
 
 ### 7.7 Coste orientativo (05)
 3 h de voz/día ≈ 30 000 palabras ≈ 50 000 tokens: Haiku 5.5 en segundo plano ≈ 1 $/mes; respuestas

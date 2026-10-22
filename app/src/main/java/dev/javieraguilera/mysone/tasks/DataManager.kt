@@ -264,8 +264,11 @@ class DataManager(private val container: AppContainer) {
      */
     private suspend fun flushWal() = db.useWriterConnection { it.executeSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
 
-    /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello. */
-    private suspend fun deleteDigests(fromMs: Long, toMs: Long) = db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
+    /** Los resúmenes diarios recogen lo borrado: se quitan y DigestBuilder los rehace sin ello, aunque sean antiguos. */
+    private suspend fun deleteDigests(fromMs: Long, toMs: Long) {
+        db.digests().deleteDays(Time.dayKey(fromMs), Time.dayKey(toMs))
+        DigestBuilder.redo(container.app, Time.dayKey(fromMs), Time.dayKey(toMs))
+    }
 
     /** Todos los trozos viven en pending/; se resuelve por nombre, guarde la captura la ruta absoluta o relativa. */
     private fun pendingFile(path: String) = File(pendingDir(container.app), File(path).name)

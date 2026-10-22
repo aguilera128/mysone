@@ -313,6 +313,19 @@ class ProcessingTest {
         assertEquals(listOf("2026-10-14", "2026-10-10"), daysToDigest(convs, madrid))
     }
 
+    @Test fun `los días con el resumen borrado se apuntan hasta rehacerlo o quedarse sin nada que resumir`() {
+        assertEquals(listOf("2026-09-29", "2026-09-30", "2026-10-01"), daysBetween("2026-09-29", "2026-10-01"))
+        assertEquals(listOf("2026-10-15"), daysBetween("2026-10-15", "2026-10-15"))
+
+        fun conv(day: Int, state: String, noise: Boolean = false) = Conversation(
+            startedAt = ms(2026, 10, day, 12, 0), endedAt = ms(2026, 10, day, 12, 5), source = ConvSource.MIC, state = state, isNoise = noise,
+        )
+        val convs = listOf(conv(1, ConvState.DONE), conv(2, ConvState.DONE, noise = true), conv(3, ConvState.READY))
+        // El 1 tiene qué resumir y el 3 lo tendrá al procesarse; el 2 (solo ruido) y el 4 (nada) ya no.
+        val redo = setOf("2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04")
+        assertEquals(setOf("2026-10-02", "2026-10-04"), settledRedo(redo, convs, madrid))
+    }
+
     @Test fun `un 400 o 413 es de esa conversación y cuenta como intento, 404, clave, cuota y servidor paran la cola`() {
         fun err(code: Int) = httpError(HttpReply(code, """{"error":{"type":"invalid_request_error"}}""", null))
         listOf(400, 413, 422).forEach {

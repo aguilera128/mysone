@@ -66,6 +66,7 @@
     <string name="today_action_download_model">Descargar modelo</string>
     <string name="today_action_grant">Dar permiso</string>
     <string name="today_action_forget">Olvidar…</string>
+    <string name="today_action_fix_battery">Evitar que Android la cierre</string>
     <string name="today_forget_5">Los últimos 5 min</string>
     <string name="today_forget_15">Los últimos 15 min</string>
     <string name="today_forget_60">La última hora</string>

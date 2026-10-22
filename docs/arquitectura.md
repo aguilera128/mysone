@@ -637,7 +637,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   según RAM, tamaño, Wi-Fi); 5) IA opcional ("puedes configurarla después"); 6) empezar a escuchar.
 - **Hoy** (B5a): tarjeta de estado (escuchando con medidor de nivel / en pausa hasta / micrófono
   ocupado / detenida / falta modelo), botones Escuchar-Detener, Pausar 15 min, Pausar 1 h, "Olvidar…"
-  (5/15/60 min con confirmación); selector de día (hoy y anteriores); resumen del día si existe;
+  (5/15/60 min con confirmación); si se ha detenido sola o no arranca y la app tiene restricciones de
+  batería, «Evitar que Android la cierre» (la exención o, si está «Restringida», su ficha); selector de
+  día (hoy y anteriores); resumen del día si existe;
   línea de tiempo de conversaciones (hora, título o "Transcribiendo…"/"Sin procesar", 2 líneas de
   resumen, chips de tareas, ruido atenuado) intercalando los **huecos** (pausa, micro ocupado,
   detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir.

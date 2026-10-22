@@ -94,6 +94,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -116,6 +117,8 @@ import dev.javieraguilera.mysone.ui.components.EmptyState
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.onboarding.openAppSettings
 import dev.javieraguilera.mysone.ui.onboarding.rememberPermissionState
+import dev.javieraguilera.mysone.ui.settings.batteryState
+import dev.javieraguilera.mysone.ui.settings.requestUnrestricted
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -155,6 +158,9 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
         }
     }
     val start = { if (mic.granted) ListeningController.start(context) else mic.request() }
+    // Si Android la ha cerrado, lo que lo evita está en Ajustes › Batería: aquí también, junto a «Reanudar».
+    var battery by remember { mutableStateOf(batteryState(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { battery = batteryState(context) }
 
     TodayContent(
         ui = ui,
@@ -180,6 +186,10 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
                     scope.launch { snackbar.showSnackbar(resources.getString(R.string.today_forget_done, minutes)) }
                 },
                 queue = queue,
+                // «Restringida» no se arregla con la exención: hay que cambiarla en la ficha de la app.
+                onFixBattery = if (battery.unrestricted && !battery.backgroundRestricted) null else {
+                    { if (battery.backgroundRestricted) openAppSettings(context) else requestUnrestricted(context) }
+                },
             )
         },
     )
@@ -326,6 +336,7 @@ internal fun StatusCard(
     onOpenModels: () -> Unit,
     onForget: (Int) -> Unit,
     queue: QueueStatus = QueueStatus.Running,
+    onFixBattery: (() -> Unit)? = null, // null = sin restricciones de batería
 ) {
     val c = MaterialTheme.colorScheme
     val look = when (status) {
@@ -431,12 +442,16 @@ internal fun StatusCard(
                         Button(onClick = onStart) { Text(stringResource(R.string.action_retry)) }
                         // Parada por el sistema: también se puede dejar así, sin el aviso de reanudar.
                         if (listeningEnabled) OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
+                        onFixBattery?.let { TextButton(onClick = it) { Text(stringResource(R.string.today_action_fix_battery)) } }
                     }
                     ListeningStatus.Off -> {
                         Button(onClick = onStart) {
                             Text(stringResource(if (listeningEnabled) R.string.today_action_resume else R.string.today_action_listen))
                         }
-                        if (listeningEnabled) OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
+                        if (listeningEnabled) {
+                            OutlinedButton(onClick = onStop) { Text(stringResource(R.string.today_action_stop)) }
+                            onFixBattery?.let { TextButton(onClick = it) { Text(stringResource(R.string.today_action_fix_battery)) } }
+                        }
                     }
                 }
                 ForgetButton(onForget)
@@ -735,7 +750,7 @@ private fun StatusPreview() {
     MysoneTheme {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf(ListeningStatus.MicBusy, ListeningStatus.NeedsModel, ListeningStatus.Off).forEach {
-                StatusCard(it, listeningEnabled = it == ListeningStatus.Off, pendingChunks = 0, {}, {}, {}, {}, {}, {})
+                StatusCard(it, listeningEnabled = it == ListeningStatus.Off, pendingChunks = 0, {}, {}, {}, {}, {}, {}, onFixBattery = {})
             }
         }
     }

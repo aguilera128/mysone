@@ -88,7 +88,7 @@ private const val AUDIO_MIC = "MIC"
 /** [lastExit]: texto del motivo y hora del último cierre de la app con la escucha en marcha (ListeningService.lastExit). */
 data class BatteryState(val unrestricted: Boolean, val backgroundRestricted: Boolean, val lastExit: Pair<Int, Long>? = null)
 
-private fun batteryState(context: Context) = BatteryState(
+internal fun batteryState(context: Context) = BatteryState(
     unrestricted = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
     backgroundRestricted = context.getSystemService(ActivityManager::class.java).isBackgroundRestricted,
     lastExit = ListeningService.lastExit(context),
@@ -138,7 +138,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAi: () -> Unit, onOpenModels: () ->
 
 // App instalada a mano: pedir la exención directamente está bien (docs/investigacion/02 §batería).
 @SuppressLint("BatteryLife")
-private fun requestUnrestricted(context: Context) {
+internal fun requestUnrestricted(context: Context) {
     val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${context.packageName}".toUri())
     if (!context.openSafely(direct)) context.openSafely(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
 }

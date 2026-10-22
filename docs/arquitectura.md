@@ -306,7 +306,8 @@ class DataManager(container: AppContainer) {
 
 // AppContainer (A)
 class AppContainer(val app: Application) {
-  val appScope: CoroutineScope        // SupervisorJob + Dispatchers.Default
+  val appScope: CoroutineScope        // SupervisorJob + Dispatchers.Default; aquí escriben los ViewModels:
+                                      // viewModelScope se cancela al cerrar la pantalla o cambiar de pestaña
   val db: AppDatabase
   val settings: SettingsStore; val secrets: SecretStore
   val models: ModelManager; val transcriber: Transcriber
@@ -665,7 +666,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   según RAM, tamaño, Wi-Fi); 5) IA opcional ("puedes configurarla después"); 6) empezar a escuchar.
 - **Hoy** (B5a): tarjeta de estado (escuchando con medidor de nivel / en pausa hasta / micrófono
   ocupado / detenida / falta modelo), botones Escuchar-Detener, Pausar 15 min, Pausar 1 h, "Olvidar…"
-  (5/15/60 min con confirmación); selector de día (hoy y anteriores); resumen del día si existe;
+  (5/15/60 min con confirmación); si se ha detenido sola o no arranca y la app tiene restricciones de
+  batería, «Evitar que Android la cierre» (la exención o, si está «Restringida», su ficha); selector de
+  día (hoy y anteriores); resumen del día si existe;
   línea de tiempo de conversaciones (hora, título o "Transcribiendo…"/"Sin procesar", 2 líneas de
   resumen, chips de tareas, ruido atenuado) intercalando los **huecos** (pausa, micro ocupado,
   detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir. Con la escucha activada y
@@ -681,9 +684,11 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   "¿Qué dije del presupuesto?"); respuesta con chips de cita `HH:mm · título` que abren la
   conversación; estado "pensando"; errores claros (sin clave, sin red, cuota); borrar chat. Aviso fijo
   pequeño: "Se envía a {proveedor} un extracto de tus transcripciones".
-- **Tareas** (B5b): pestañas Pendientes · Sugeridas · Hechas; recordatorio con fecha/hora editable
-  (date/time pickers de M3); aceptar sugerida, marcar hecha, borrar; botón "+" para crear un
-  recordatorio a mano; enlace a la conversación de origen.
+- **Tareas** (B5b): pestañas Pendientes · Sugeridas · Hechas; recordatorio y fecha límite con fecha/hora
+  editables (date/time pickers de M3; la fecha límite, informativa, se puede quitar o dejar en el pasado
+  para corregir la que puso la IA); aceptar sugerida, marcar hecha, borrar; botón "+" para crear un
+  recordatorio a mano; enlace a la conversación de origen, abierta en el segmento donde empieza la cita
+  (sus 5 primeras palabras) si sigue en la transcripción.
 - **Memoria** (B5b): facts confirmados y sugeridos (confirmar, editar, borrar), añadir a mano.
 - **Ajustes** (B5b): Escucha (fuente de audio, minutos de silencio que cierran conversación,
   ahorro de batería, recordatorio rápido); Transcripción (`SettingsModels`: catálogo, estado,

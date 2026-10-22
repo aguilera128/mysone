@@ -33,6 +33,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -124,7 +125,7 @@ fun TasksScreen(highlightTaskId: Long?, onOpenConversation: (Long, Long?) -> Uni
             create = vm::create,
             delete = vm::delete,
             restore = vm::restore,
-            openConversation = { onOpenConversation(it, null) },
+            openConversation = { vm.openConversation(it, onOpenConversation) },
         ),
     )
 }
@@ -133,11 +134,11 @@ class TaskActions(
     val accept: (TaskItem) -> Unit = {},
     val dismiss: (TaskItem) -> Unit = {},
     val setDone: (TaskItem, Boolean) -> Unit = { _, _ -> },
-    val edit: (TaskItem, String, Long?) -> Unit = { _, _, _ -> },
-    val create: (String, Long?) -> Unit = { _, _ -> },
+    val edit: (TaskItem, String, Long?, Long?) -> Unit = { _, _, _, _ -> },
+    val create: (String, Long?, Long?) -> Unit = { _, _, _ -> },
     val delete: (TaskItem) -> Unit = {},
     val restore: (TaskItem) -> Unit = {},
-    val openConversation: (Long) -> Unit = {},
+    val openConversation: (TaskItem) -> Unit = {},
 )
 
 private val TABS = listOf(R.string.tasks_tab_pending, R.string.tasks_tab_suggested, R.string.tasks_tab_done)
@@ -227,9 +228,9 @@ private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, ac
         TaskDialog(
             initial = t,
             current = lists.firstNotNullOfOrNull { l -> l.find { it.id == t.id } } ?: t,
-            onSave = { text, remindAt ->
+            onSave = { text, remindAt, due ->
                 editing = null
-                actions.edit(t, text, remindAt)
+                actions.edit(t, text, remindAt, due)
             },
             onDelete = { delete(t) },
             onDismiss = { editing = null },
@@ -238,9 +239,9 @@ private fun TasksContent(lists: List<List<TaskItem>>, highlightTaskId: Long?, ac
     if (creating) {
         TaskDialog(
             initial = null,
-            onSave = { text, remindAt ->
+            onSave = { text, remindAt, due ->
                 creating = false
-                actions.create(text, remindAt)
+                actions.create(text, remindAt, due)
             },
             onDelete = null,
             onDismiss = { creating = false },
@@ -333,8 +334,8 @@ private fun TaskRow(t: TaskItem, highlighted: Boolean, actions: TaskActions, onE
                     FilledTonalButton(onClick = { actions.accept(t) }) { Text(stringResource(R.string.tasks_accept)) }
                     TextButton(onClick = { actions.dismiss(t) }) { Text(stringResource(R.string.tasks_dismiss)) }
                 }
-                t.conversationId?.let { id ->
-                    TextButton(onClick = { actions.openConversation(id) }) { Text(stringResource(R.string.tasks_open_conversation)) }
+                if (t.conversationId != null) {
+                    TextButton(onClick = { actions.openConversation(t) }) { Text(stringResource(R.string.tasks_open_conversation)) }
                 }
             }
         }
@@ -406,13 +407,14 @@ private const val STEP_DATE = 1
 private const val STEP_TIME = 2
 
 /**
- * Crear ([initial] null) o editar una tarea: texto y recordatorio con los pickers de Material 3. [current]: la tarea
- * como está ahora; mientras no se toque el aviso se enseña el suyo (la notificación puede posponerlo con esto abierto).
+ * Crear ([initial] null) o editar una tarea: texto, recordatorio y fecha límite con los pickers de Material 3.
+ * [current]: la tarea como está ahora; mientras no se toque el aviso se enseña el suyo (la notificación puede
+ * posponerlo con esto abierto). [onSave]: texto, aviso y fecha límite.
  */
 @Composable
 private fun TaskDialog(
     initial: TaskItem?,
-    onSave: (String, Long?) -> Unit,
+    onSave: (String, Long?, Long?) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     current: TaskItem? = initial,
@@ -425,8 +427,11 @@ private fun TaskDialog(
         picked = at
         touched = true
     }
+    var due by rememberSaveable { mutableStateOf(initial?.dueAt) }
     var pickedDate by rememberSaveable { mutableStateOf<Long?>(null) }
     var step by rememberSaveable { mutableIntStateOf(STEP_NONE) }
+    // Los mismos pickers sirven para el aviso y para la fecha límite: esto dice cuál se está eligiendo.
+    var forDue by rememberSaveable { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     // Un aviso ya pasado se puede conservar tal cual; uno nuevo o cambiado tiene que ser futuro.
     val reminderInPast = remindAt.let { it != null && it <= now && it != current?.remindAt }
@@ -445,7 +450,7 @@ private fun TaskDialog(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(
-                        onClick = { step = STEP_DATE },
+                        onClick = { forDue = false; step = STEP_DATE },
                         label = { Text(remindAt?.let { whenLabel(it) } ?: stringResource(R.string.tasks_add_reminder)) },
                         leadingIcon = { Icon(Icons.Outlined.Alarm, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
                     )
@@ -462,10 +467,23 @@ private fun TaskDialog(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                // La IA puede haber entendido mal «el viernes»: se cambia o se quita aquí.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AssistChip(
+                        onClick = { forDue = true; step = STEP_DATE },
+                        label = { Text(due?.let { stringResource(R.string.tasks_due_cd, whenLabel(it)) } ?: stringResource(R.string.tasks_add_due)) },
+                        leadingIcon = { Icon(Icons.Outlined.Event, contentDescription = null, modifier = Modifier.size(AssistChipDefaults.IconSize)) },
+                    )
+                    if (due != null) {
+                        IconButton(onClick = { due = null }) {
+                            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.tasks_remove_due))
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(text, remindAt) }, enabled = text.isNotBlank() && !reminderInPast) {
+            TextButton(onClick = { onSave(text, remindAt, due) }, enabled = text.isNotBlank() && !reminderInPast) {
                 Text(stringResource(R.string.action_save))
             }
         },
@@ -480,7 +498,11 @@ private fun TaskDialog(
     )
 
     if (step == STEP_DATE) {
-        val state = rememberDatePickerState(initialSelectedDateMillis = pickerDateOf(remindAt ?: now), selectableDates = FromToday)
+        // La fecha límite puede quedar atrás (corregir una ya pasada); el aviso tiene que ser futuro.
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = pickerDateOf((if (forDue) due else remindAt) ?: now),
+            selectableDates = if (forDue) DatePickerDefaults.AllDates else FromToday,
+        )
         DatePickerDialog(
             onDismissRequest = { step = STEP_NONE },
             confirmButton = {
@@ -499,7 +521,7 @@ private fun TaskDialog(
     }
     if (step == STEP_TIME) {
         // Sin hora previa, las 09:00 o, si hoy ya han pasado, la próxima hora en punto.
-        val current = remindAt?.let { Instant.ofEpochMilli(it).atZone(Time.zone()) }
+        val current = (if (forDue) due else remindAt)?.let { Instant.ofEpochMilli(it).atZone(Time.zone()) }
         val (defaultHour, defaultMinute) = defaultReminderTime(pickedDate ?: pickerDateOf(now), now)
         val state = rememberTimePickerState(
             initialHour = current?.hour ?: defaultHour,
@@ -511,7 +533,8 @@ private fun TaskDialog(
             title = { Text(stringResource(R.string.tasks_pick_time)) },
             confirmButton = {
                 TextButton(onClick = {
-                    setRemindAt(pickerToEpoch(pickedDate ?: pickerDateOf(now), state.hour, state.minute))
+                    val at = pickerToEpoch(pickedDate ?: pickerDateOf(now), state.hour, state.minute)
+                    if (forDue) due = at else setRemindAt(at)
                     step = STEP_NONE
                 }) { Text(stringResource(R.string.action_accept)) }
             },

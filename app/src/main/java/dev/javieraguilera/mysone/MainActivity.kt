@@ -235,7 +235,7 @@ private const val TAB_STATE = "tab:"
  * Como rememberSaveableStateHolderNavEntryDecorator, salvo que no borra el estado guardado de las raíces de las
  * pestañas al sacarlas de la pila. Cambiar de pestaña las saca (selectTab) y, si no, al volver se habría perdido lo
  * escrito en Preguntar, la pestaña elegida en Tareas o el scroll. Lo que va encima (Buscar, una conversación) sí se
- * borra al salir. Sus ViewModels se recrean igual: solo leen de la BD.
+ * borra al salir. Sus ViewModels se recrean igual: leen de la BD y escriben en appScope, que no se cancela al salir.
  */
 @Composable
 private fun rememberTabStateDecorator(): NavEntryDecorator<NavKey> {

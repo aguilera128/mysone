@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.tasks
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.core.content.edit
 import androidx.room3.executeSQL
 import androidx.room3.useWriterConnection
@@ -33,6 +34,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -145,24 +147,35 @@ class DataManager(private val container: AppContainer) {
         flushWal()
     }
 
-    /** Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. */
+    /**
+     * Todo menos la clave. El aviso de 06 §7.4 lo muestra la UI antes de llamar aquí. Si falla, se borra el documento
+     * que ya creó el selector: si no, quedaría en el destino un JSON a medias (o vacío) que el dueño cree que no existe.
+     */
     @OptIn(ExperimentalSerializationApi::class)
     suspend fun exportJson(target: Uri) {
-        val export = ExportFile(
-            exportedAt = System.currentTimeMillis(),
-            settings = container.settings.current(),
-            conversations = db.conversations().all(),
-            segments = db.segments().inRange(0, Long.MAX_VALUE),
-            tasks = db.tasks().all(),
-            facts = db.facts().all(),
-            digests = db.digests().all(),
-            chat = db.chat().all(),
-            gaps = db.gaps().all(),
-        )
-        withContext(Dispatchers.IO) {
-            // "wt": algunos proveedores no truncan con "w" y quedarían restos de un fichero anterior.
-            val out = container.app.contentResolver.openOutputStream(target, "wt") ?: throw IOException("No se puede abrir el destino")
-            out.use { AppJson.encodeToStream(ExportFile.serializer(), export, it) }
+        try {
+            val export = ExportFile(
+                exportedAt = System.currentTimeMillis(),
+                settings = container.settings.current(),
+                conversations = db.conversations().all(),
+                segments = db.segments().inRange(0, Long.MAX_VALUE),
+                tasks = db.tasks().all(),
+                facts = db.facts().all(),
+                digests = db.digests().all(),
+                chat = db.chat().all(),
+                gaps = db.gaps().all(),
+            )
+            withContext(Dispatchers.IO) {
+                // "wt": algunos proveedores no truncan con "w" y quedarían restos de un fichero anterior.
+                val out = container.app.contentResolver.openOutputStream(target, "wt") ?: throw IOException("No se puede abrir el destino")
+                out.use { AppJson.encodeToStream(ExportFile.serializer(), export, it) }
+            }
+        } catch (e: Throwable) {
+            // Si el proveedor no deja borrar, se queda como estaba. Si el proceso muere a mitad, tampoco se borra.
+            withContext(NonCancellable + Dispatchers.IO) {
+                runCatching { DocumentsContract.deleteDocument(container.app.contentResolver, target) }
+            }
+            throw e
         }
     }
 

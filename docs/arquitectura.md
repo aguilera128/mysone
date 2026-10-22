@@ -299,7 +299,7 @@ class ReminderScheduler(context: Context) {
 class DataManager(container: AppContainer) {
   suspend fun forgetLast(minutes: Int)            // segmentos, cola pendiente y conversaciones vaciadas
   suspend fun deleteConversation(id: Long)
-  suspend fun exportJson(target: Uri)             // todo menos la clave
+  suspend fun exportJson(target: Uri)             // todo menos la clave; si falla, borra el documento a medias
   suspend fun deleteAll()                         // BD, cola, chat, ajustes de IA, clave y voz registrada; conserva los modelos
   suspend fun applyRetention()
 }

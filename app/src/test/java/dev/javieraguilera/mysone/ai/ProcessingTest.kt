@@ -326,4 +326,24 @@ class ProcessingTest {
         assertTrue(LlmException(LlmErrorKind.BAD_OUTPUT, "x").countsAsAttempt())
         assertFalse(LlmException(LlmErrorKind.SERVER, "URL no válida", retryable = false).isRequestError())
     }
+
+    @Test fun `un 503 o un tiempo de espera que se repite deja la conversación en FAILED y fuera de la cola`() {
+        val e503 = httpError(HttpReply(503, "", null))
+        val timeout = LlmException(LlmErrorKind.NETWORK, "SocketTimeoutException")
+        listOf(e503, timeout, httpError(HttpReply(408, "", null))).forEach { e ->
+            assertTrue(e.isTransient())
+            var attempts = 0
+            val states = (1..AiProcessing.MAX_TRANSIENT).map { e.stateAfter(attempts).also { attempts++ } }
+            assertEquals(List(AiProcessing.MAX_TRANSIENT - 1) { ConvState.READY } + ConvState.FAILED, states)
+        }
+        // La cola solo reintenta las FAILED con menos de MAX_ATTEMPTS: la que se rinde ya no la para.
+        assertTrue(AiProcessing.MAX_TRANSIENT >= AiProcessing.MAX_ATTEMPTS)
+        // Clave, cuota, URL o modelo: de los ajustes o la cuenta, ni cuentan ni la dan por fallida.
+        listOf(401, 402, 404, 429).map { httpError(HttpReply(it, "", null)) }.forEach {
+            assertFalse("${it.message}", it.isTransient())
+            assertEquals(ConvState.READY, it.stateAfter(10))
+        }
+        assertFalse(LlmException(LlmErrorKind.SERVER, "URL no válida", retryable = false).isTransient())
+        assertEquals(ConvState.FAILED, httpError(HttpReply(400, "", null)).stateAfter(0))
+    }
 }

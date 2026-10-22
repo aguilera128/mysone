@@ -562,7 +562,10 @@ lleva `provider.require_parameters` (solo endpoints que cumplen `response_format
 - Validación: parsear con kotlinx.serialization (`ignoreUnknownKeys`); fechas inválidas → null;
   textos recortados. Un fallo de formato reintenta una vez; luego `FAILED` con `lastError`.
 - Estados: `READY → PROCESSING → DONE | FAILED`. `FAILED` se reintenta en `processPending()` hasta 3
-  veces (`processAttempts`).
+  veces (`processAttempts`). Clave y cuota la devuelven a `READY` sin contar; red y servidor (tiempo de espera, 5xx)
+  también, pero cuentan, y con 6 intentos queda en `FAILED` («Reprocesar» o cambiar los ajustes de IA la recuperan):
+  la misma petición puede no pasar nunca y, como la cola va por `startedAt` y se para en ese error, sin tope se
+  pagaría sin fin y nada de lo posterior se procesaría.
 - Apagar la IA para los envíos siguientes (los ajustes se leen justo antes de cada llamada), no el que ya está en
   camino: su respuesta se guarda con sus tareas y alarmas, igual que la de Preguntar. El texto ya ha salido y la
   llamada está pagada; descartarla dejaría la conversación en `READY` y se volvería a enviar al reactivar la IA. Lo

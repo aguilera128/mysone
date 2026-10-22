@@ -10,6 +10,8 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
+import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import dev.javieraguilera.mysone.R
 import java.io.File
 import java.io.IOException
@@ -97,6 +99,26 @@ class ModelManager(private val context: Context) {
         ),
     )
 
+    /**
+     * Huellas de voz para saber quién habla en lo importado (§5.6): ERes2Net de 3D-Speaker entrenado con VoxCeleb, el
+     * único de los probados que separa bien voces en español también con calidad de teléfono (docs/investigacion/09).
+     * Va aparte de [catalog] e [installs]: no transcribe, y la escucha y la elección de modelo no deben contarlo.
+     */
+    val speakerModel: AsrModel = model(
+        id = SPEAKER_MODEL_ID,
+        name = R.string.model_speaker_name,
+        description = R.string.model_speaker_desc,
+        minRamGb = 0,
+        repo = "csukuangfj/speaker-embedding-models",
+        commit = "0743f301363dec56491a490f6d6cbc9d67f9a3bf",
+        files = listOf(
+            Triple("3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx", 26_485_263L, "c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5"),
+        ),
+        license = "Apache-2.0",
+    )
+
+    private val all = catalog + speakerModel
+
     private val downloads = context.getSystemService(DownloadManager::class.java)
     private val prefs = context.getSharedPreferences("asr_downloads", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -118,12 +140,21 @@ class ModelManager(private val context: Context) {
     )
     val installs: StateFlow<Map<String, ModelInstall>> = _installs.asStateFlow()
 
+    private val _speakerInstall = MutableStateFlow(
+        when {
+            isInstalled(SPEAKER_MODEL_ID) -> ModelInstall.Installed
+            prefs.contains(SPEAKER_MODEL_ID) -> ModelInstall.Downloading(0f)
+            else -> ModelInstall.NotInstalled
+        },
+    )
+    val speakerInstall: StateFlow<ModelInstall> = _speakerInstall.asStateFlow()
+
     init {
-        catalog.filter { prefs.contains(it.id) }.forEach(::watch)
+        all.filter { prefs.contains(it.id) }.forEach(::watch)
     }
 
     fun download(id: String, allowMetered: Boolean) {
-        val model = catalog.find { it.id == id } ?: return
+        val model = all.find { it.id == id } ?: return
         if (jobs[id]?.isActive == true || isInstalled(id)) return
         val tmp = tmpDir(id) ?: return fail(id, context.getString(R.string.asr_error_storage))
         val missing = model.files.filter { File(modelDir(id), it.name).length() != it.sizeBytes }
@@ -138,7 +169,7 @@ class ModelManager(private val context: Context) {
                     DownloadManager.Request(f.url.toUri())
                         .setDestinationInExternalFilesDir(context, TMP_DIR, "$id/${f.name}")
                         .setAllowedOverMetered(allowMetered)
-                        .setTitle(context.getString(R.string.asr_download_title, model.name)),
+                        .setTitle(context.getString(if (id == SPEAKER_MODEL_ID) R.string.asr_download_title_speaker else R.string.asr_download_title, model.name)),
                 )
             }
         } catch (e: RuntimeException) { // DownloadManager desactivado, almacenamiento no disponible…
@@ -172,8 +203,21 @@ class ModelManager(private val context: Context) {
     /** Reconocedor nuevo con los ficheros de [model], sin que nadie los borre mientras se leen. */
     internal suspend fun openRecognizer(model: AsrModel): OfflineRecognizer = files.withLock { createRecognizer(model, modelDir(model.id)) }
 
+    /**
+     * Extractor de huellas de voz (§5.6), igual que [openRecognizer]: nadie borra el modelo mientras se lee. null si no
+     * está instalado. Se comprueba el tamaño antes: un modelo roto en sherpa-onnx mata el proceso en vez de lanzar.
+     */
+    internal suspend fun openSpeakerExtractor(): SpeakerEmbeddingExtractor? = files.withLock {
+        val dir = modelDir(SPEAKER_MODEL_ID)
+        if (!speakerModel.hasFilesIn(dir)) return@withLock null
+        SpeakerEmbeddingExtractor(
+            assetManager = null,
+            config = SpeakerEmbeddingExtractorConfig(model = File(dir, speakerModel.files.single().name).absolutePath, numThreads = 2),
+        )
+    }
+
     /** Todos los ficheros en su sitio y con su tamaño. El hash se comprueba al instalar: solo llegan aquí verificados. */
-    fun isInstalled(id: String): Boolean = catalog.find { it.id == id }?.hasFilesIn(modelDir(id)) == true
+    fun isInstalled(id: String): Boolean = all.find { it.id == id }?.hasFilesIn(modelDir(id)) == true
 
     /** Ficheros borrados por fuera de la app: el estado deja de decir "Instalado" (si no, «Falta el modelo» no se ve). */
     fun recheck(id: String) {
@@ -304,7 +348,9 @@ class ModelManager(private val context: Context) {
 
     private fun fail(id: String, message: String) = setState(id, ModelInstall.Failed(message))
 
-    private fun setState(id: String, state: ModelInstall) = _installs.update { it + (id to state) }
+    private fun setState(id: String, state: ModelInstall) {
+        if (id == SPEAKER_MODEL_ID) _speakerInstall.value = state else _installs.update { it + (id to state) }
+    }
 
     private fun model(
         id: String,
@@ -314,13 +360,14 @@ class ModelManager(private val context: Context) {
         repo: String,
         commit: String,
         files: List<Triple<String, Long, String?>>,
+        license: String = "CC-BY-4.0",
     ) = AsrModel(
         id = id,
         name = context.getString(name),
         description = context.getString(description),
         sizeBytes = files.sumOf { it.second },
         recommendedMinRamGb = minRamGb,
-        license = "CC-BY-4.0",
+        license = license,
         files = files.map { (file, size, sha) ->
             ModelFile(file, "https://huggingface.co/$repo/resolve/$commit/$file", size, sha)
         },
@@ -337,6 +384,9 @@ class ModelManager(private val context: Context) {
  * Memory Limiter de Android 17 deja 2 GiB a un servicio en primer plano en un móvil de 6 GB (1 GiB con 4 GB).
  */
 internal const val PARAKEET_MIN_RAM_GB = 6
+
+/** Modelo de huellas de voz ([ModelManager.speakerModel]). */
+internal const val SPEAKER_MODEL_ID = "eres2net-voxceleb"
 
 /** Modelo que se propone para [ramGb] (0 = no se sabe): Parakeet si hay RAM de sobra; si no, Canary, el ligero. */
 internal fun recommendedModelId(ramGb: Int): String = if (ramGb >= PARAKEET_MIN_RAM_GB) "parakeet-v3" else "canary-180m-es"

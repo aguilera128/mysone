@@ -234,6 +234,24 @@
     <string name="models_calls_existing_all">Transcribir también</string>
     <string name="models_calls_existing_new">Solo las nuevas</string>
 
+    <!-- Quién habla (§5.6) -->
+    <string name="voices_section">Quién habla</string>
+    <string name="voices_desc">En los audios y las llamadas que importes, Mysone marca quién dice cada frase: «Hablante 1», «Hablante 2»… Se calcula en el móvil y solo en lo que importes a partir de ahora. La escucha en directo no lo hace.</string>
+    <string name="voices_delete_message">Lo que importes dejará de marcar quién habla hasta que lo descargues otra vez (%1$s). Lo ya marcado se queda.</string>
+    <string name="voices_owner_desc">Si registras tu voz, tus frases saldrán como «Tú». Se guarda solo en el móvil.</string>
+    <string name="voices_owner_record">Registrar mi voz</string>
+    <string name="voices_owner_done">Tu voz está registrada: en lo que importes, tus frases salen como «Tú».</string>
+    <string name="voices_owner_again">Volver a grabar</string>
+    <string name="voices_owner_delete">Borrar mi voz</string>
+    <string name="voices_enroll_title">Registrar tu voz</string>
+    <string name="voices_enroll_intro">Pulsa «Empezar» y lee en voz alta, con tu tono normal. Si acabas antes de que se llene la barra, vuelve a leerlo.</string>
+    <string name="voices_enroll_text">Hoy he quedado con mi hermana para comer en el centro. Después pasaré por el taller a recoger el coche y, si me da tiempo, compraré pan y fruta para la cena. El viernes por la tarde tengo una reunión de trabajo y el sábado quiero salir a caminar por el monte con unos amigos.</string>
+    <string name="voices_enroll_start">Empezar</string>
+    <string name="voices_enroll_progress">Grabando… %1$d de %2$d s de voz</string>
+    <string name="voices_enroll_saving">Guardando tu voz…</string>
+    <string name="voice_error_mic">No se puede usar el micrófono. Comprueba el permiso y que ninguna otra app esté grabando.</string>
+    <string name="voice_error_model">Falta el modelo de voces. Descárgalo e inténtalo otra vez.</string>
+
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>
     <string name="privacy_retention_desc">Cuánto tiempo se guarda el texto literal de lo que se oye. Los resúmenes, tareas y recuerdos se conservan.</string>
@@ -244,7 +262,7 @@
     <string name="privacy_secure_screen">Ocultar en capturas</string>
     <string name="privacy_secure_screen_desc">Impide capturas y grabaciones de pantalla, y oculta el contenido en la vista de apps recientes.</string>
     <string name="privacy_section_export">Exportar</string>
-    <string name="privacy_export_desc">Guarda en un archivo JSON tus conversaciones, transcripciones, tareas, recuerdos, chat y ajustes. No incluye la clave de la IA.</string>
+    <string name="privacy_export_desc">Guarda en un archivo JSON tus conversaciones, transcripciones, tareas, recuerdos, chat y ajustes. No incluye la clave de la IA ni tu voz registrada.</string>
     <string name="privacy_export">Exportar datos</string>
     <string name="privacy_export_title">Antes de exportar</string>
     <string name="privacy_export_warning">El archivo contiene las palabras de otras personas. Compartirlo fuera de tu uso personal puede vulnerar su intimidad o su protección de datos. Guárdalo en un lugar seguro y no lo difundas.</string>
@@ -252,10 +270,10 @@
     <string name="privacy_export_done">Datos exportados</string>
     <string name="privacy_export_failed">No se ha podido guardar el archivo</string>
     <string name="privacy_section_delete">Borrar todo</string>
-    <string name="privacy_delete_desc">Borra todo lo guardado en el móvil. Los modelos de transcripción se conservan.</string>
+    <string name="privacy_delete_desc">Borra todo lo guardado en el móvil. Los modelos de transcripción y de voces se conservan.</string>
     <string name="privacy_delete_all">Borrar todo</string>
     <string name="privacy_delete_title">¿Borrar todos tus datos?</string>
-    <string name="privacy_delete_message">Se borran las conversaciones, transcripciones, tareas, recordatorios, recuerdos y el chat, además de la configuración y la clave de la IA. La escucha se detendrá.</string>
+    <string name="privacy_delete_message">Se borran las conversaciones, transcripciones, tareas, recordatorios, recuerdos, el chat y tu voz registrada, además de la configuración y la clave de la IA. La escucha se detendrá.</string>
     <string name="privacy_delete_continue">Continuar</string>
     <string name="privacy_delete_title2">Esto no se puede deshacer</string>
     <string name="privacy_delete_message2">Si quieres conservar algo, cancela y exporta antes tus datos.</string>
@@ -269,6 +287,7 @@
     <string name="about_open_web">Abrir la web</string>
     <string name="about_sherpa">Reconocimiento de voz en el dispositivo.</string>
     <string name="about_silero">Detecta cuándo hay voz.</string>
+    <string name="about_speaker_model">Distingue quién habla en los audios importados. Se usa la versión ONNX del proyecto sherpa-onnx.</string>
     <string name="about_nvidia_model">Modelo de NVIDIA. Se usa la versión convertida a ONNX y cuantizada a int8 por el proyecto sherpa-onnx.</string>
     <string name="about_cc_by">Los modelos de NVIDIA se distribuyen bajo la licencia Creative Commons Atribución 4.0 Internacional.</string>
     <string name="about_cc_by_link">Leer la licencia CC BY 4.0</string>

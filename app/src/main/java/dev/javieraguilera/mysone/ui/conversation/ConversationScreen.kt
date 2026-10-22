@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -288,7 +288,11 @@ private fun Body(
                 }
             }
         }
-        items(state.segments, key = { it.id }) { SegmentRow(it, cited = it.id == segmentId) }
+        itemsIndexed(state.segments, key = { _, it -> it.id }) { i, s ->
+            val cited = s.id == segmentId
+            // Quién habla, al cambiar de voz (y en el citado, que se abre sin ver los de antes).
+            SegmentRow(s, cited, showSpeaker = s.speaker != null && (cited || i == 0 || state.segments[i - 1].speaker != s.speaker))
+        }
         item(key = "end") { Spacer(Modifier.height(32.dp)) }
     }
 }
@@ -446,9 +450,9 @@ private fun FactCard(fact: Fact, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/** Línea de la transcripción con su hora. La citada lleva una barra de tinta en el margen. */
+/** Línea de la transcripción con su hora y, si [showSpeaker], quién habla. La citada lleva una barra de tinta en el margen. */
 @Composable
-private fun SegmentRow(segment: Segment, cited: Boolean) {
+private fun SegmentRow(segment: Segment, cited: Boolean, showSpeaker: Boolean = false) {
     val c = MaterialTheme.colorScheme
     val citedLabel = stringResource(R.string.conv_cited)
     Row(
@@ -468,8 +472,23 @@ private fun SegmentRow(segment: Segment, cited: Boolean) {
             )
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
-        TimeMargin(Time.hourMinuteSecond(segment.startedAt), Modifier.widthIn(min = 72.dp).padding(top = 2.dp))
-        Text(segment.text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        TimeMargin(Time.hourMinuteSecond(segment.startedAt), Modifier.widthIn(min = 72.dp).padding(top = if (showSpeaker) 22.dp else 2.dp))
+        Column(Modifier.weight(1f).padding(start = 8.dp)) {
+            if (showSpeaker) {
+                val speaker = segment.speaker ?: 0
+                Text(
+                    if (speaker == 0) stringResource(R.string.conv_speaker_owner) else stringResource(R.string.conv_speaker_n, speaker),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = when {
+                        speaker == 0 -> c.primary
+                        speaker % 2 == 1 -> c.tertiary
+                        else -> c.secondary
+                    },
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            Text(segment.text, style = MaterialTheme.typography.bodyLarge)
+        }
     }
 }
 
@@ -493,7 +512,7 @@ private fun previewState(): ConversationState.Loaded {
     return ConversationState.Loaded(
         conversation = conv,
         keyPoints = listOf("Presupuesto de unos 8.000 €", "Oferta del fontanero el viernes"),
-        segments = lines.mapIndexed { i, text -> Segment(i + 1L, 1, t0 + i * 40_000L, t0 + i * 40_000L + 30_000L, text) },
+        segments = lines.mapIndexed { i, text -> Segment(i + 1L, 1, t0 + i * 40_000L, t0 + i * 40_000L + 30_000L, text, speaker = if (i % 2 == 0) 0 else 1) },
         tasks = listOf(
             TaskItem(1, "Llamar al fontanero si no llega la oferta", TaskState.OPEN, remindAt = t0 + 4 * 86_400_000L,
                 conversationId = 1, sourceQuote = "Recuérdame llamarle si no llega", createdAt = t0),

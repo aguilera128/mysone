@@ -116,6 +116,8 @@
     <string name="conv_transcript_empty">La transcripción literal se borró al cumplirse el plazo de retención.</string>
     <string name="conv_not_found">Esta conversación ya no existe</string>
     <string name="conv_cited">Fragmento citado</string>
+    <string name="conv_speaker_owner">Tú</string>
+    <string name="conv_speaker_n">Hablante %1$d</string>
     <string name="conv_quote">«%1$s»</string>
     <string name="task_accept">Aceptar</string>
     <string name="task_dismiss">Descartar</string>
@@ -162,7 +164,7 @@
     <string name="onb_intro_doesnt">Qué no hace</string>
     <string name="onb_intro_doesnt_1">No guarda audio: se borra en cuanto se transcribe.</string>
     <string name="onb_intro_doesnt_2">No envía nada a internet salvo que actives la IA.</string>
-    <string name="onb_intro_doesnt_3">No graba llamadas de teléfono ni distingue quién habla.</string>
+    <string name="onb_intro_doesnt_3">No graba llamadas (sí transcribe las que grabe tu teléfono) ni distingue voces en la escucha en directo.</string>
 
     <string name="onb_legal_title">Antes de empezar</string>
     <string name="onb_legal_intro">Mysone escucha de forma continua mientras ves su notificación, transcribe en el teléfono y borra el audio. Guarda texto con fecha y hora.</string>

@@ -29,7 +29,8 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Decodifica, segmenta con su propio VAD, transcribe y guarda una conversación IMPORT en estado READY (§5.5). */
 class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
-    private class Piece(val startSample: Long, val endSample: Long, val text: String)
+    /** [part]: su número en el [Diarizer] (−1 sin él). */
+    private class Piece(val startSample: Long, val endSample: Long, val text: String, val part: Int)
 
     private var startedAt: Long? = null // de la conversación creada, para decir en qué día ha quedado
     private var conversationId: Long? = null // para quitarla de la lista si después se borra
@@ -104,34 +105,59 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val pieces = ArrayList<Piece>()
         var total = 0L
         var shownAt = 0L
-        VadSegmenter(applicationContext).use { vad ->
-            suspend fun transcribe(chunks: List<SpeechChunk>) {
-                for (chunk in chunks) {
-                    val text = c.transcriber.transcribe(chunk.samples)
-                    if (text.isNotEmpty()) pieces += Piece(chunk.startSample, chunk.startSample + chunk.samples.size, text)
-                }
+        // Quién habla (§5.6), si está el modelo de voces: cada trozo se parte donde cambia la voz antes de transcribirlo.
+        var diarizer = Diarizer.open(c.models)
+        fun parts(chunk: SpeechChunk): List<Pair<Int, SpeechChunk>> {
+            val d = diarizer ?: return listOf(-1 to chunk)
+            return try {
+                d.split(chunk)
+            } catch (e: Exception) { // sin hablantes en todo el fichero, pero el texto se guarda igual
+                Log.w(TAG, "Sin hablantes: ${e.javaClass.simpleName}")
+                d.close()
+                diarizer = null
+                listOf(-1 to chunk)
             }
-            try {
-                AudioDecoder.decode(applicationContext, uri) { samples, progress ->
-                    total += samples.size
-                    transcribe(vad.accept(samples))
-                    // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
-                    val now = System.currentTimeMillis()
-                    if (now - shownAt >= PROGRESS_EVERY_MS) {
-                        shownAt = now
-                        setProgress(workDataOf(KEY_PROGRESS to progress))
-                        showProgress(progress)
+        }
+        val speakers = try {
+            VadSegmenter(applicationContext).use { vad ->
+                suspend fun transcribe(chunks: List<SpeechChunk>) {
+                    for ((part, piece) in chunks.flatMap(::parts)) {
+                        val text = c.transcriber.transcribe(piece.samples)
+                        if (text.isNotEmpty()) pieces += Piece(piece.startSample, piece.startSample + piece.samples.size, text, part)
                     }
                 }
-            } catch (e: Exception) {
-                // Fichero dañado o cortado a mitad (CodecException, IOException del proveedor): lo ya transcrito se
-                // guarda, que repetir fallaría en el mismo sitio. Sin nada transcrito, el error de siempre.
-                val damaged = (e is IllegalStateException && e !is CancellationException) || e is IOException
-                if (!damaged || total == 0L) throw e
-                Log.w(TAG, "Importación cortada: ${e.javaClass.simpleName}")
-                partial = true
+                try {
+                    AudioDecoder.decode(applicationContext, uri) { samples, progress ->
+                        total += samples.size
+                        transcribe(vad.accept(samples))
+                        // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
+                        val now = System.currentTimeMillis()
+                        if (now - shownAt >= PROGRESS_EVERY_MS) {
+                            shownAt = now
+                            setProgress(workDataOf(KEY_PROGRESS to progress))
+                            showProgress(progress)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Fichero dañado o cortado a mitad (CodecException, IOException del proveedor): lo ya transcrito se
+                    // guarda, que repetir fallaría en el mismo sitio. Sin nada transcrito, el error de siempre.
+                    val damaged = (e is IllegalStateException && e !is CancellationException) || e is IOException
+                    if (!damaged || total == 0L) throw e
+                    Log.w(TAG, "Importación cortada: ${e.javaClass.simpleName}")
+                    partial = true
+                }
+                transcribe(vad.flush())
             }
-            transcribe(vad.flush())
+            diarizer?.let { d ->
+                try {
+                    d.speakers(OwnerVoice.load(applicationContext, d.dim))
+                } catch (e: Exception) { // la voz guardada ilegible: el texto se guarda igual, sin hablantes
+                    Log.w(TAG, "Sin hablantes: ${e.javaClass.simpleName}")
+                    null
+                }
+            }
+        } finally {
+            diarizer?.close()
         }
         if (pieces.isEmpty()) return R.string.asr_import_error_no_speech
 
@@ -155,7 +181,9 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 ),
             )
             for (p in pieces) {
-                c.db.segments().insert(Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text))
+                c.db.segments().insert(
+                    Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = speakers?.getOrNull(p.part)),
+                )
             }
             convId
         } ?: return R.string.asr_import_cancelled

@@ -79,9 +79,11 @@ class MysoneApp : Application() {
             listOf(
                 channel(CHANNEL_LISTENING, R.string.channel_listening_name, R.string.channel_listening_desc, NotificationManager.IMPORTANCE_LOW),
                 channel(CHANNEL_REMINDERS, R.string.channel_reminders_name, R.string.channel_reminders_desc, NotificationManager.IMPORTANCE_HIGH),
-                channel(CHANNEL_ALERTS, R.string.channel_alerts_name, R.string.channel_alerts_desc, NotificationManager.IMPORTANCE_DEFAULT),
+                channel(CHANNEL_ALERTS, R.string.channel_alerts_name, R.string.channel_alerts_desc, NotificationManager.IMPORTANCE_HIGH),
             ),
         )
+        // El de antes, de importancia normal: no salía como ventana emergente y la de un canal ya creado no se puede subir.
+        nm.deleteNotificationChannel("alerts")
     }
 
     private fun channel(id: String, name: Int, description: Int, importance: Int) =
@@ -94,8 +96,8 @@ class MysoneApp : Application() {
         /** Recordatorios de tareas (importancia alta). */
         const val CHANNEL_REMINDERS = "reminders"
 
-        /** "La escucha se ha detenido. Toca para reanudar" (importancia normal). */
-        const val CHANNEL_ALERTS = "alerts"
+        /** "La escucha se ha detenido. Toca para reanudar" (importancia alta: ventana emergente, como un recordatorio). */
+        const val CHANNEL_ALERTS = "alerts_high"
 
         private val STANDARD_CONTEXTS = setOf("app", "device", "os", "runtime", "trace", "gpu")
     }

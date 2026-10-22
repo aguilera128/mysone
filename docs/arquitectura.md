@@ -489,9 +489,11 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
 - `MaintenanceWorker` periódico cada 30 min (`KEEP`): si `listeningEnabled` y el servicio no corre →
   `ResumeNotifier`; `ai.processPending()` si hay red; `ai.buildMissingDigests()`;
   `data.applyRetention()` una vez al día; limpiar ficheros huérfanos de `pending/`.
-- `ResumeNotifier` (B1): notificación en el canal `alerts` "La escucha se ha detenido. Toca para
+- `ResumeNotifier` (B1): notificación en el canal `alerts_high` (importancia alta) "La escucha se ha detenido. Toca para
   reanudar" con `PendingIntent.getForegroundService(START)` (la interacción con la notificación da el
-  permiso "mientras se usa"); acción secundaria abre la app.
+  permiso "mientras se usa"); acción secundaria abre la app. Sale como ventana emergente y suena solo la primera vez de
+  cada interrupción; las siguientes van en silencio. El canal `alerts` de antes (importancia normal, sin ventana
+  emergente) se borra al arrancar: la importancia de un canal ya creado no se puede subir.
 
 ---
 

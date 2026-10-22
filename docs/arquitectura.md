@@ -423,7 +423,10 @@ crece; si hay alguno sin asentar se vuelve a mirar al minuto), no encolados ya (
 `calls`, guardado cuando WorkManager ya tiene el trabajo) y sin conversación importada (CALL o a mano) que termine en
 su fecha de modificación (así no se repite al volver a elegir la carpeta, ni aunque se guardara solo en parte;
 ImportWorker lo comprueba otra vez antes de decodificar). Sin modelo instalado no se encola nada, y si el modelo
-no carga, la llamada vuelve a quedar pendiente.
+no carga, la llamada vuelve a quedar pendiente. Tampoco con la transcripción en espera, igual que la escucha
+(`ListeningService.transcriptionHold`: `batterySaver` con menos del 20 % sin cargar, o estado térmico ≥ SEVERE): no
+queda nada como visto y el escaneo siguiente (el mantenimiento, como mucho a los 30 min) la encola. Lo que ya estaba
+en cola sigue.
 Cada elección de carpeta tiene su token: lo encolado con otro (tras «Dejar de importar» o al elegirla de nuevo)
 acaba sin leerse ni borrarse. El borrado se decide al terminar, con `callDeleteAfter` (por defecto) y el token
 vigentes: solo si la conversación ya está guardada entera (lo decodificado dura lo que dice la cabecera, ±2 s) y

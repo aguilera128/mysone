@@ -44,6 +44,15 @@ class QuickRemindersTest {
         ).forEach { assertFalse(it, QuickReminders.matches(it)) }
     }
 
+    @Test fun `varios recuérdame seguidos van en una llamada y uno de hace más de 3 min en otra`() {
+        fun seg(id: Long, sec: Long) = Segment(id, 1, sec * 1000, sec * 1000 + 3000, "Recuérdame algo")
+        // Una tele con tres «recuerda» en un minuto: basta el último, cuya ventana recoge los otros dos.
+        assertEquals(listOf(3L), QuickReminders.covering(listOf(seg(1, 0), seg(2, 20), seg(3, 60))).map { it.id })
+        // La cola de transcripción con retraso suelta de golpe dos de hace 10 min: cada uno con su ventana.
+        assertEquals(listOf(1L, 3L), QuickReminders.covering(listOf(seg(3, 600), seg(1, 0), seg(2, 500))).map { it.id })
+        assertEquals(emptyList<Segment>(), QuickReminders.covering(emptyList()))
+    }
+
     @Test fun `entrada del recordatorio rápido usa el momento en que se dijo`() {
         val madrid = ZoneId.of("Europe/Madrid")
         val said = ZonedDateTime.of(2026, 10, 15, 18, 43, 2, 0, madrid).toInstant().toEpochMilli()

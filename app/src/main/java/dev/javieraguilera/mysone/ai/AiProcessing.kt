@@ -34,12 +34,26 @@ class AiProcessing(private val container: AppContainer) {
     // puede ser un resto de un proceso que murió a medias.
     private val mutex = Mutex()
 
+    // "Recuérdame" que esperan el cerrojo, por conversación: los que caben en una ventana van en una sola llamada.
+    private val pendingQuick = mutableMapOf<Long, MutableList<Segment>>()
+
     /** No bloquea; recordatorio rápido si procede. */
     fun onSegmentTranscribed(segment: Segment) {
         if (!QuickReminders.matches(segment.text)) return
+        // Si ya hay uno esperando en esta conversación, lo recoge ese: los saca con el cerrojo cogido, así que lo que
+        // llegue después lanza el suyo y no se pierde ninguno.
+        val first = synchronized(pendingQuick) {
+            val list = pendingQuick.getOrPut(segment.conversationId) { mutableListOf() }
+            list += segment
+            list.size == 1
+        }
+        if (!first) return
         container.appScope.launch {
             try {
-                mutex.withLock { quickReminders.handle(segment) }
+                mutex.withLock {
+                    val triggers = synchronized(pendingQuick) { pendingQuick.remove(segment.conversationId) }.orEmpty()
+                    QuickReminders.covering(triggers).forEach { quickReminders.handle(it) }
+                }
             } catch (e: Exception) {
                 // Sin red o sin respuesta: el procesado completo de la conversación lo recogerá.
                 if (e !is LlmException && e !is CancellationException) Sentry.captureException(e)
@@ -122,12 +136,12 @@ class AiProcessing(private val container: AppContainer) {
             withContext(NonCancellable) { dao.setStateIf(id, ConvState.PROCESSING, previous) }
             throw e
         } catch (e: LlmException) {
-            // De esta conversación: cuenta como intento. Clave, red, cuota o servidor: vuelve a la cola.
-            val counts = e.countsAsAttempt()
+            // De esta conversación: cuenta como intento. Red o servidor también cuentan, pero vuelve a la cola hasta
+            // MAX_TRANSIENT; clave o cuota son de la cuenta: vuelve a la cola sin contar.
             dao.endFailed(
                 id,
-                state = if (counts) ConvState.FAILED else ConvState.READY,
-                addAttempts = if (counts) 1 else 0,
+                state = e.stateAfter(c.processAttempts),
+                addAttempts = if (e.countsAsAttempt() || e.isTransient()) 1 else 0,
                 // Se muestra tal cual en Conversación: solo el texto en español, sin el detalle técnico (§2).
                 lastError = container.app.getString(e.kind.messageRes),
             )
@@ -168,6 +182,9 @@ class AiProcessing(private val container: AppContainer) {
     internal companion object {
         /** Reintentos de FAILED en processPending (§7.3). */
         const val MAX_ATTEMPTS = 3
+
+        /** Intentos, contando los de red o servidor, con los que una conversación se da por fallida (§7.3). */
+        const val MAX_TRANSIENT = 6
     }
 }
 
@@ -190,3 +207,17 @@ internal fun notConfigured() = LlmException(LlmErrorKind.AUTH, "IA no configurad
 /** Error de esa conversación y no de los ajustes: cuenta como intento y la cola sigue. */
 internal fun LlmException.countsAsAttempt() =
     kind == LlmErrorKind.BAD_OUTPUT || kind == LlmErrorKind.REFUSAL || isRequestError()
+
+/**
+ * Tiempo de espera o 5xx: puede ser un corte del proveedor o esta petición, que no pasa nunca (una parte de 60 000
+ * caracteres con un modelo lento, un proxy que corta a los 100 s). [AiProcessing.drain] para en el primero: en un corte
+ * solo suma la primera de la cola.
+ */
+internal fun LlmException.isTransient() = retryable && (kind == LlmErrorKind.NETWORK || kind == LlmErrorKind.SERVER)
+
+/** Estado tras [this] en una conversación que llevaba [attempts]: sin tope, una que siempre falla pararía la cola. */
+internal fun LlmException.stateAfter(attempts: Int): String = when {
+    countsAsAttempt() -> ConvState.FAILED
+    isTransient() && attempts + 1 >= AiProcessing.MAX_TRANSIENT -> ConvState.FAILED
+    else -> ConvState.READY
+}

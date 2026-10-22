@@ -563,15 +563,7 @@ class ListeningService : Service() {
         }
     }
 
-    private suspend fun holdReason(): Int {
-        if (getSystemService(PowerManager::class.java).currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) {
-            return R.string.capture_hold_thermal
-        }
-        val bm = getSystemService(BatteryManager::class.java)
-        val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) // MIN_VALUE si no se sabe
-        if (c.settings.current().batterySaver && !bm.isCharging && level in 0 until LOW_BATTERY) return R.string.capture_hold_battery
-        return 0
-    }
+    private suspend fun holdReason(): Int = transcriptionHold(this)
 
     /** Conversación READY sin audio pendiente: a la IA, o fuera si no quedó ningún segmento. Con [book]. */
     private suspend fun finishLocked(id: Long) = finishConversation(c, id)
@@ -744,6 +736,20 @@ class ListeningService : Service() {
                 File(it.path).delete()
             }
             stale.map { it.conversationId }.distinct().forEach { finishConversation(c, it) }
+        }
+
+        /**
+         * Por qué no se transcribe ahora (el id de su texto), o 0: móvil muy caliente, o batería baja sin cargar con el
+         * ahorro activo. Lo miran la escucha y las llamadas que se importan solas (CallImporter).
+         */
+        internal suspend fun transcriptionHold(context: Context): Int {
+            if (context.getSystemService(PowerManager::class.java).currentThermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) {
+                return R.string.capture_hold_thermal
+            }
+            val bm = context.getSystemService(BatteryManager::class.java)
+            val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) // MIN_VALUE si no se sabe
+            if (context.container.settings.current().batterySaver && !bm.isCharging && level in 0 until LOW_BATTERY) return R.string.capture_hold_battery
+            return 0
         }
 
         /** "Borrar todo": sin latido ni pausa que dejen después un hueco anterior al borrado o una reanudación. */

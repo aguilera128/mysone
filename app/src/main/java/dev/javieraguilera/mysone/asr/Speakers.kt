@@ -210,6 +210,17 @@ internal fun speakerNumbers(groups: IntArray, prints: List<FloatArray>, weights:
     }
 }
 
+/**
+ * Los hablantes de las partes que se guardan ([kept], null sin hablante), otra vez 1, 2… por orden de aparición: una
+ * parte que sale sin texto (ruido, un carraspeo) no se guarda, y si era un grupo propio dejaría un hueco («Hablante 2»
+ * sin «Hablante 1»). «Tú» (0) se queda.
+ */
+// ponytail: las huellas de esas partes siguen entrando en el agrupado; quitarlas en Diarizer si desvían las medias.
+internal fun compactSpeakers(kept: List<Int?>): List<Int?> {
+    val number = HashMap<Int, Int>()
+    return kept.map { s -> if (s == null || s == 0) s else number.getOrPut(s) { number.size + 1 } }
+}
+
 /** Huella media de un grupo, pesada por las ventanas de cada huella. */
 private fun groupVoice(group: Int, groups: IntArray, prints: List<FloatArray>, weights: IntArray): FloatArray {
     val sum = FloatArray(prints.first().size)

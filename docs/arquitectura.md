@@ -402,7 +402,9 @@ class AppContainer(val app: Application) {
   Parakeet no parte ninguna (08 §3).
 - Descarga de modelos con `DownloadManager` a `getExternalFilesDir("models-tmp")`, verificación de
   tamaño y SHA-256 (los de `03` §4.2), y movido a `filesDir/models/<id>/`. Opción "solo Wi-Fi" por
-  defecto. URLs de Hugging Face fijadas a commit (03 §4.2).
+  defecto. URLs de Hugging Face fijadas a commit (03 §4.2). Una descarga que espera Wi-Fi o red se consulta cada
+  30 s, y cada segundo solo mientras la bienvenida o Ajustes › Transcripción la enseñan (`watchedByUi`: los
+  colectores de `installs` de `MysoneApp` y la escucha no cuentan).
 - Catálogo v1: `canary-180m-es` (ligero, valor por defecto de `AppSettings`) y `parakeet-v3`
   (`recommendedMinRamGb = PARAKEET_MIN_RAM_GB = 6`). El onboarding y Ajustes › Transcripción marcan
   «Recomendado» el de `recommendedModelId(deviceRamGb())` (salvo que no llegue a su RAM mínima); el onboarding
@@ -429,7 +431,10 @@ crece; si hay alguno sin asentar se vuelve a mirar al minuto), no encolados ya (
 `calls`, guardado cuando WorkManager ya tiene el trabajo) y sin conversación importada (CALL o a mano) que termine en
 su fecha de modificación (así no se repite al volver a elegir la carpeta, ni aunque se guardara solo en parte;
 ImportWorker lo comprueba otra vez antes de decodificar). Sin modelo instalado no se encola nada, y si el modelo
-no carga, la llamada vuelve a quedar pendiente.
+no carga, la llamada vuelve a quedar pendiente. Tampoco con la transcripción en espera, igual que la escucha
+(`ListeningService.transcriptionHold`: `batterySaver` con menos del 20 % sin cargar, o estado térmico ≥ SEVERE): no
+queda nada como visto y el escaneo siguiente (el mantenimiento, como mucho a los 30 min) la encola. Lo que ya estaba
+en cola sigue.
 Cada elección de carpeta tiene su token: lo encolado con otro (tras «Dejar de importar» o al elegirla de nuevo)
 acaba sin leerse ni borrarse. El borrado se decide al terminar, con `callDeleteAfter` (por defecto) y el token
 vigentes: solo si la conversación ya está guardada entera (lo decodificado dura lo que dice la cabecera, ±2 s) y
@@ -464,13 +469,18 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
   `MAX_PARTS = 3 000` partes (horas de voz) el audio se queda sin hablantes.
 - **Numerar**: el grupo cuya huella media tiene coseno ≥ `OWNER_VOICE = 0,55` con la voz registrada es «Tú»
   (`speaker = 0`; también si la voz del dueño sale partida en dos grupos); el resto, `1, 2…` por orden de aparición.
-  Alto a propósito: un «Tú» de más le atribuye al dueño lo que dijo otro. Sin voz registrada no hay 0.
+  Alto a propósito: un «Tú» de más le atribuye al dueño lo que dijo otro. Sin voz registrada no hay 0. Al guardar se
+  vuelve a numerar solo con las partes que tienen texto (`compactSpeakers`): un trozo de ruido que forma su propio grupo
+  no deja un «Hablante 2» sin «Hablante 1».
 - **Fallos**: si el modelo no carga o una huella falla, se sigue sin hablantes (null) y el texto se guarda igual.
 - **Voz del dueño** (`OwnerVoice`): Ajustes › Transcripción › Quién habla › «Registrar mi voz». Se lee un texto en voz
   alta; `AudioCapture` (con su VAD, y en debug `files/debug/mic.pcm`) junta 15 s de voz y la huella es la media de sus
   ventanas. Si la escucha estaba en marcha se pausa 2 min y se reanuda al acabar (si no, lo leído sería otra
-  conversación). Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
-  no se exporta, no tiene copia de seguridad y «Borrar todo» la borra. Afecta a lo que se importe después.
+  conversación). Mientras graba la pantalla no se apaga, y salir de ella (Inicio, otra app, pantalla apagada; girar
+  no) cancela el registro: con la escucha en pausa el servicio sigue en primer plano y el micro seguiría abierto,
+  juntando como del dueño cualquier voz. Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
+  no se exporta, no tiene copia de seguridad y «Borrar todo» la borra; borrar el modelo de voces también (sin él no
+  sirve, y no quedaría a la vista «Borrar mi voz»). Afecta a lo que se importe después.
 - **Medido** (09; 14 voces reales de MLS-es en 28 conversaciones de 2 y 3 voces): con el hablante correcto el 96 % del
   tiempo de voz en banda ancha y el 89 % en banda telefónica; «Tú» sale en el 99 % / 94 % de la voz del dueño. Dos
   voces muy parecidas pueden quedar como un solo hablante. Huellas: 0,1 × tiempo real en el PC con 2 hilos; en el

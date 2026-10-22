@@ -237,7 +237,7 @@
     <!-- Quién habla (§5.6) -->
     <string name="voices_section">Quién habla</string>
     <string name="voices_desc">En los audios y las llamadas que importes, Mysone marca quién dice cada frase: «Hablante 1», «Hablante 2»… Se calcula en el móvil y solo en lo que importes a partir de ahora. La escucha en directo no lo hace.</string>
-    <string name="voices_delete_message">Lo que importes dejará de marcar quién habla hasta que lo descargues otra vez (%1$s). Lo ya marcado se queda.</string>
+    <string name="voices_delete_message">Lo que importes dejará de marcar quién habla hasta que lo descargues otra vez (%1$s). Lo ya marcado se queda. Si registraste tu voz, también se borra.</string>
     <string name="voices_owner_desc">Si registras tu voz, tus frases saldrán como «Tú». Se guarda solo en el móvil.</string>
     <string name="voices_owner_record">Registrar mi voz</string>
     <string name="voices_owner_done">Tu voz está registrada: en lo que importes, tus frases salen como «Tú».</string>
@@ -251,6 +251,7 @@
     <string name="voices_enroll_saving">Guardando tu voz…</string>
     <string name="voice_error_mic">No se puede usar el micrófono. Comprueba el permiso y que ninguna otra app esté grabando.</string>
     <string name="voice_error_model">Falta el modelo de voces. Descárgalo e inténtalo otra vez.</string>
+    <string name="voice_error_save">No se ha podido guardar tu voz. Inténtalo otra vez.</string>
 
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>

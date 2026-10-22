@@ -15,6 +15,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.container
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -140,7 +141,7 @@ object CallImporter {
         }
     }
 
-    /** Encola las grabaciones nuevas y ya cerradas de la carpeta elegida. Sin carpeta o sin modelo, nada. */
+    /** Encola las grabaciones nuevas y ya cerradas de la carpeta elegida. Sin carpeta, sin modelo o con la transcripción en espera, nada. */
     suspend fun scan(context: Context) {
         val c = context.container
         lock.withLock { // los ajustes se leen dentro: «Dejar de importar» puede haber pasado mientras se esperaba
@@ -148,6 +149,9 @@ object CallImporter {
             val tree = settings.callFolder?.toUri() ?: return
             // Sin modelo la importación fallaría y la grabación quedaría como vista: mejor esperar a que lo haya.
             if (c.models.installs.value[settings.asrModelId] !is ModelInstall.Installed) return
+            // Ahorro de batería o móvil caliente: como la escucha, se espera. Nada queda como vista, así que la recoge el
+            // mantenimiento (cada 30 min) cuando ya se pueda.
+            if (ListeningService.transcriptionHold(context) != 0) return
             val all = recordings(context, tree) ?: return
             val prefs = prefs(context)
             // Las que ya no están (borradas tras importarlas, o a mano) sobran en la lista.

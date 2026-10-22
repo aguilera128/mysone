@@ -105,6 +105,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val pieces = ArrayList<Piece>()
         var total = 0L
         var shownAt = 0L
+        var shownPct = 0 // doWork ya enseñó el 0
         // Quién habla (§5.6), si está el modelo de voces: cada trozo se parte donde cambia la voz antes de transcribirlo.
         var diarizer = Diarizer.open(c.models)
         fun parts(chunk: SpeechChunk): List<Pair<Int, SpeechChunk>> {
@@ -130,10 +131,13 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     AudioDecoder.decode(applicationContext, uri) { samples, progress ->
                         total += samples.size
                         transcribe(vad.accept(samples))
-                        // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
+                        // Solo si cambia el porcentaje que se ve (si no, BD de WorkManager y notificación para nada), y como
+                        // mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
                         val now = System.currentTimeMillis()
-                        if (now - shownAt >= PROGRESS_EVERY_MS) {
+                        val pct = (progress * 100).toInt()
+                        if (pct != shownPct && now - shownAt >= PROGRESS_EVERY_MS) {
                             shownAt = now
+                            shownPct = pct
                             setProgress(workDataOf(KEY_PROGRESS to progress))
                             showProgress(progress)
                         }
@@ -166,6 +170,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // Así la conversación termina en la fecha de modificación: AudioImporter.alreadyImported la reconoce por ella y su duración.
         val startedAt = (modified ?: System.currentTimeMillis()) - durationMs
         val ms = { sample: Long -> startedAt + sample * 1000 / SAMPLE_RATE }
+        val who = compactSpeakers(pieces.map { speakers?.getOrNull(it.part) })
         // En una transacción: que nadie vea la conversación READY a medio llenar. Y si entretanto se ha hecho
         // "Borrar todo", nada: o se ve aquí, o el borrado viene después y se lleva también esto.
         val id = c.db.withWriteTransaction<Long?> {
@@ -180,9 +185,9 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     state = ConvState.READY,
                 ),
             )
-            for (p in pieces) {
+            for ((i, p) in pieces.withIndex()) {
                 c.db.segments().insert(
-                    Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = speakers?.getOrNull(p.part)),
+                    Segment(conversationId = convId, startedAt = ms(p.startSample), endedAt = ms(p.endSample), text = p.text, speaker = who[i]),
                 )
             }
             c.data.markImported(convId) // la retención cuenta desde ahora, no desde la fecha del fichero

@@ -3,6 +3,8 @@ package dev.javieraguilera.mysone.ui.settings
 import android.media.MediaRecorder
 import android.net.Uri
 import android.text.format.Formatter
+import android.util.Log
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -52,7 +55,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -81,6 +86,7 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import dev.javieraguilera.mysone.ui.today.dayFull
 import java.time.LocalDate
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -102,7 +108,7 @@ sealed interface SelfTest {
 class SettingsModelsViewModel(private val container: AppContainer) : ViewModel() {
     private val models = container.models
     val catalog = models.catalog
-    val installs = models.installs
+    val installs = models.watchedByUi(models.installs).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), models.installs.value)
     val ramGb = models.deviceRamGb()
     val recommendedId = recommendedModelId(ramGb)
 
@@ -214,7 +220,7 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     // ---- Quién habla (§5.6) ----
 
     val speakerModel = models.speakerModel
-    val speakerInstall = models.speakerInstall
+    val speakerInstall = models.watchedByUi(models.speakerInstall).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), models.speakerInstall.value)
 
     private val _ownerVoice = MutableStateFlow(OwnerVoice.exists(container.app))
     val ownerVoice: StateFlow<Boolean> = _ownerVoice.asStateFlow()
@@ -226,8 +232,13 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
 
     fun cancelSpeaker() = models.cancel(SPEAKER_MODEL_ID)
 
+    /** También la voz del dueño: sin el modelo no sirve, y sin él tampoco se ve «Borrar mi voz». La voz antes, por si se corta. */
     fun deleteSpeaker() {
-        viewModelScope.launch { models.delete(SPEAKER_MODEL_ID) }
+        container.appScope.launch {
+            OwnerVoice.delete(container.app)
+            _ownerVoice.value = false
+            models.delete(SPEAKER_MODEL_ID)
+        }
     }
 
     fun deleteOwnerVoice() {
@@ -282,13 +293,21 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
         _enroll.value = Enroll.Saving
         stopCapture()
         container.appScope.launch {
-            val ok = OwnerVoice.enroll(container.app, models, synchronized(speech) { speech.toList() })
+            // null: ha fallado al calcular o guardar la huella. Sin capturarlo, «Guardando…» no se cerraría nunca.
+            val ok = try {
+                OwnerVoice.enroll(container.app, models, synchronized(speech) { speech.toList() })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) { // también UnsatisfiedLinkError, como en Diarizer.open
+                Log.w("MysoneAsr", "No se pudo registrar la voz: ${e.javaClass.simpleName}")
+                null
+            }
             synchronized(speech) { speech.clear() }
-            if (ok) {
+            if (ok == true) {
                 _ownerVoice.value = true
                 _enroll.value = null
             } else {
-                _enroll.value = Enroll.Failed(R.string.voice_error_model)
+                _enroll.value = Enroll.Failed(if (ok == false) R.string.voice_error_model else R.string.voice_error_save)
             }
         }
     }
@@ -399,6 +418,12 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         ),
     )
     enroll?.let { EnrollDialog(it, onStart = vm::startEnroll, onCancel = vm::cancelEnroll) }
+    // Fuera de la pantalla (Inicio, otra app, pantalla apagada) el micro sigue abierto con la escucha en pausa y juntaría
+    // como tuya la voz de quien se oiga: se cancela. Al girar no, que la actividad se recrea y el ViewModel sigue.
+    val activity = LocalActivity.current
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (vm.enroll.value is Enroll.Recording && activity?.isChangingConfigurations != true) vm.cancelEnroll()
+    }
     pendingFolder?.let { (_, count) ->
         AlertDialog(
             onDismissRequest = { vm.confirmCallFolder(null) },
@@ -465,7 +490,7 @@ private fun SettingsModelsContent(
                 checked = wifiOnly,
                 onCheckedChange = actions.setWifiOnly,
                 // Se aplica al encolar: durante una descarga cambiarlo no haría nada.
-                enabled = installs.values.none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
+                enabled = (installs.values + voices.install).none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
@@ -777,7 +802,8 @@ private fun EnrollDialog(state: Enroll, onStart: () -> Unit, onCancel: () -> Uni
                     is Enroll.Recording -> {
                         val total = OwnerVoice.ENROLL_SAMPLES / SAMPLE_RATE
                         Progress(stringResource(R.string.voices_enroll_progress, (state.progress * total).toInt(), total), state.progress)
-                        LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth().height(4.dp))
+                        // Que no se apague a media lectura: apagada, el registro se cancela.
+                        LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth().height(4.dp).keepScreenOn())
                     }
                     Enroll.Saving -> Progress(stringResource(R.string.voices_enroll_saving), null)
                     is Enroll.Failed -> StatusLine(stringResource(state.message), ok = false)

@@ -105,6 +105,7 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val pieces = ArrayList<Piece>()
         var total = 0L
         var shownAt = 0L
+        var shownPct = 0 // doWork ya enseñó el 0
         // Quién habla (§5.6), si está el modelo de voces: cada trozo se parte donde cambia la voz antes de transcribirlo.
         var diarizer = Diarizer.open(c.models)
         fun parts(chunk: SpeechChunk): List<Pair<Int, SpeechChunk>> {
@@ -130,10 +131,13 @@ class ImportWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     AudioDecoder.decode(applicationContext, uri) { samples, progress ->
                         total += samples.size
                         transcribe(vad.accept(samples))
-                        // Como mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
+                        // Solo si cambia el porcentaje que se ve (si no, BD de WorkManager y notificación para nada), y como
+                        // mucho dos veces por segundo: el sistema descarta las notificaciones más seguidas.
                         val now = System.currentTimeMillis()
-                        if (now - shownAt >= PROGRESS_EVERY_MS) {
+                        val pct = (progress * 100).toInt()
+                        if (pct != shownPct && now - shownAt >= PROGRESS_EVERY_MS) {
                             shownAt = now
+                            shownPct = pct
                             setProgress(workDataOf(KEY_PROGRESS to progress))
                             showProgress(progress)
                         }

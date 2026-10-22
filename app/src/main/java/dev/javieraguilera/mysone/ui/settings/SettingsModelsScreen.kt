@@ -226,8 +226,13 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
 
     fun cancelSpeaker() = models.cancel(SPEAKER_MODEL_ID)
 
+    /** También la voz del dueño: sin el modelo no sirve, y sin él tampoco se ve «Borrar mi voz». La voz antes, por si se corta. */
     fun deleteSpeaker() {
-        viewModelScope.launch { models.delete(SPEAKER_MODEL_ID) }
+        container.appScope.launch {
+            OwnerVoice.delete(container.app)
+            _ownerVoice.value = false
+            models.delete(SPEAKER_MODEL_ID)
+        }
     }
 
     fun deleteOwnerVoice() {

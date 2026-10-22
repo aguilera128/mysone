@@ -462,7 +462,8 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
   alta; `AudioCapture` (con su VAD, y en debug `files/debug/mic.pcm`) junta 15 s de voz y la huella es la media de sus
   ventanas. Si la escucha estaba en marcha se pausa 2 min y se reanuda al acabar (si no, lo leído sería otra
   conversación). Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
-  no se exporta, no tiene copia de seguridad y «Borrar todo» la borra. Afecta a lo que se importe después.
+  no se exporta, no tiene copia de seguridad y «Borrar todo» la borra; borrar el modelo de voces también (sin él no
+  sirve, y no quedaría a la vista «Borrar mi voz»). Afecta a lo que se importe después.
 - **Medido** (09; 14 voces reales de MLS-es en 28 conversaciones de 2 y 3 voces): con el hablante correcto el 96 % del
   tiempo de voz en banda ancha y el 89 % en banda telefónica; «Tú» sale en el 99 % / 94 % de la voz del dueño. Dos
   voces muy parecidas pueden quedar como un solo hablante. Huellas: 0,1 × tiempo real en el PC con 2 hilos; en el

@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -234,7 +235,7 @@ private fun SettingsPrivacyContent(
     pendingRetention?.let { days ->
         ConfirmDialog(
             title = stringResource(R.string.privacy_retention_confirm_title),
-            message = stringResource(R.string.privacy_retention_confirm_message, days),
+            message = pluralStringResource(R.plurals.privacy_retention_confirm_message, days, days),
             confirmLabel = stringResource(R.string.privacy_retention_confirm),
             onConfirm = {
                 pendingRetention = null

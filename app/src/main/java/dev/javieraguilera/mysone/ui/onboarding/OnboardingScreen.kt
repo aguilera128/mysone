@@ -79,7 +79,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
     val vm = viewModel { OnboardingViewModel(container, createSavedStateHandle()) }
-    val installs by remember { vm.models.watchedByUi(vm.models.installs) }.collectAsStateWithLifecycle(vm.models.installs.value)
+    val installs by vm.installs.collectAsStateWithLifecycle()
     val legalAcceptedAt by vm.legalAcceptedAt.collectAsStateWithLifecycle()
     val mic = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
     @SuppressLint("InlinedApi") // el paso de notificaciones solo existe desde Android 13 (OnboardingViewModel.steps)

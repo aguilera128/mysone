@@ -36,6 +36,9 @@ class OnboardingViewModel(private val container: AppContainer, private val saved
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val models = container.models
+
+    /** Estado de las descargas, contando esta pantalla como una que enseña el progreso ([ModelManager.watchedByUi]). */
+    val installs = models.watchedByUi(models.installs).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), models.installs.value)
     val ramGb: Int = models.deviceRamGb()
     val recommendedModelId = recommendedModelId(ramGb)
     var selectedModelId by mutableStateOf(recommendedModelId)

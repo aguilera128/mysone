@@ -655,7 +655,8 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   pequeño: "Se envía a {proveedor} un extracto de tus transcripciones".
 - **Tareas** (B5b): pestañas Pendientes · Sugeridas · Hechas; recordatorio con fecha/hora editable
   (date/time pickers de M3); aceptar sugerida, marcar hecha, borrar; botón "+" para crear un
-  recordatorio a mano; enlace a la conversación de origen.
+  recordatorio a mano; enlace a la conversación de origen, abierta en el segmento donde empieza la cita
+  (sus 5 primeras palabras) si sigue en la transcripción.
 - **Memoria** (B5b): facts confirmados y sugeridos (confirmar, editar, borrar), añadir a mano.
 - **Ajustes** (B5b): Escucha (fuente de audio, minutos de silencio que cierran conversación,
   ahorro de batería, recordatorio rápido); Transcripción (`SettingsModels`: catálogo, estado,

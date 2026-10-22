@@ -3,8 +3,10 @@ package dev.javieraguilera.mysone.ui.tasks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.javieraguilera.mysone.AppContainer
+import dev.javieraguilera.mysone.data.Segment
 import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
+import dev.javieraguilera.mysone.tasks.DataManager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -24,6 +26,14 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun observe(state: String) =
         dao.observeByState(state).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** La conversación de [t] abierta en la frase de su cita, si sigue en la transcripción; si no, por arriba. */
+    fun openConversation(t: TaskItem, open: (Long, Long?) -> Unit) {
+        val id = t.conversationId ?: return
+        viewModelScope.launch {
+            open(id, t.sourceQuote?.let { quotedSegment(it, container.db.segments().textForConversation(id)) })
+        }
+    }
 
     // Las escrituras van en appScope: cambiar de pestaña saca la pantalla de la pila y cancela viewModelScope, y un
     // borrado que esperaba la conexión de escritura no llegaría a hacerse.
@@ -78,4 +88,13 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
             container.reminders.schedule(t)
         }
     }
+}
+
+/**
+ * Id del primer segmento de [segments] donde empieza [quote]. Bastan sus 5 primeras palabras (la cita puede seguir en
+ * el segmento siguiente) y tienen que ser palabras enteras: un «vale» no casa con «valencia». Null si no está.
+ */
+internal fun quotedSegment(quote: String, segments: List<Segment>): Long? {
+    val start = DataManager.normalized(quote).split(' ').take(5).joinToString(" ").ifEmpty { return null }
+    return segments.firstOrNull { " $start " in " ${DataManager.normalized(it.text)} " }?.id
 }

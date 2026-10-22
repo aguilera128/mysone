@@ -124,7 +124,7 @@ fun TasksScreen(highlightTaskId: Long?, onOpenConversation: (Long, Long?) -> Uni
             create = vm::create,
             delete = vm::delete,
             restore = vm::restore,
-            openConversation = { onOpenConversation(it, null) },
+            openConversation = { vm.openConversation(it, onOpenConversation) },
         ),
     )
 }
@@ -137,7 +137,7 @@ class TaskActions(
     val create: (String, Long?) -> Unit = { _, _ -> },
     val delete: (TaskItem) -> Unit = {},
     val restore: (TaskItem) -> Unit = {},
-    val openConversation: (Long) -> Unit = {},
+    val openConversation: (TaskItem) -> Unit = {},
 )
 
 private val TABS = listOf(R.string.tasks_tab_pending, R.string.tasks_tab_suggested, R.string.tasks_tab_done)
@@ -333,8 +333,8 @@ private fun TaskRow(t: TaskItem, highlighted: Boolean, actions: TaskActions, onE
                     FilledTonalButton(onClick = { actions.accept(t) }) { Text(stringResource(R.string.tasks_accept)) }
                     TextButton(onClick = { actions.dismiss(t) }) { Text(stringResource(R.string.tasks_dismiss)) }
                 }
-                t.conversationId?.let { id ->
-                    TextButton(onClick = { actions.openConversation(id) }) { Text(stringResource(R.string.tasks_open_conversation)) }
+                if (t.conversationId != null) {
+                    TextButton(onClick = { actions.openConversation(t) }) { Text(stringResource(R.string.tasks_open_conversation)) }
                 }
             }
         }

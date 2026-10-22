@@ -683,7 +683,8 @@ Componentes: `ListeningService` (`microphone`), `ReminderReceiver`, `SystemEvent
 
 Build: `abiFilters += listOf("arm64-v8a", "x86_64")`; release con R8
 (`proguard-android-optimize.txt`) y `-keep class com.k2fsa.sherpa.onnx.** { *; }`; firma de
-release = clave debug (uso personal; ver AGENTS.md). Repositorio JitPack en `settings.gradle.kts`
+release = clave debug (uso personal; ver AGENTS.md); por eso la debug va con `applicationIdSuffix = ".debug"`
+(«Mysone Debug») y la qa con `.qa`, y ninguna se instala encima de la release. Repositorio JitPack en `settings.gradle.kts`
 limitado a `com.github.k2-fsa*`. `BuildConfig.SENTRY_DSN` desde la propiedad Gradle `mysone.sentryDsn`
 o la variable `SENTRY_DSN` (vacío = Sentry apagado). Sin plugin de Sentry.
 
@@ -714,7 +715,7 @@ se calcula en el móvil y sin guardar audio (solo vectores mientras dura la impo
   silencio, números con y sin dueño, y la cadena de vecinos frente al aglomerativo directo en 200 casos al azar).
 - **Instrumentadas** (emulador): DAOs y FTS5 con `BundledSQLiteDriver` en memoria; migraciones (`MigrationTest`).
   Con el móvil personal conectado, nada de `connectedDebugAndroidTest`: `assembleDebugAndroidTest` y
-  `adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.test/androidx.test.runner.AndroidJUnitRunner`.
+  `adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.debug.test/androidx.test.runner.AndroidJUnitRunner`.
 - **E2E en emulador** (`Pixel_7_Pro_API_34` y `10.1_WXGA_Tablet_API_36`): onboarding, descarga de
   Canary, importar `conv1.wav`/`conv2.wav` (TTS en español), transcripción correcta, procesado con el
   servidor falso (`node tools/mock-llm.mjs`, puerto 8787, en el emulador `http://10.0.2.2:8787`, clave

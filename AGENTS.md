@@ -80,14 +80,16 @@ export JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ANDROID_HOME="$LO
 Los tests instrumentados (`app/src/androidTest`) prueban los DAOs y el FTS5 sobre Room en memoria
 con `BundledSQLiteDriver`, y las migraciones (`MigrationTest`, contra `app/schemas`).
 
-**Con el móvil personal conectado, nunca `connectedDebugAndroidTest` ni `installQa`** (instalarían encima y
-desinstalarían al acabar). O `ANDROID_SERIAL=emulator-5554` delante, o, más seguro, instalar y lanzar a mano:
+La debug es `dev.javieraguilera.mysone.debug` («Mysone Debug») y la qa `.qa`: ninguna se instala encima de la
+release ni borra sus datos. Aun así, **con el móvil personal conectado, nunca `connectedDebugAndroidTest` ni
+`installQa`**: instalan en todos los dispositivos de `adb devices`. O `ANDROID_SERIAL=emulator-5554` delante, o,
+más seguro, instalar y lanzar a mano:
 
 ```bash
 ./gradlew assembleDebug assembleDebugAndroidTest
 adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s emulator-5554 install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.test/androidx.test.runner.AndroidJUnitRunner
+adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 Build `qa` (`./gradlew installQa`): la release con R8 y shrink, firmada con la clave debug, `dev.javieraguilera.mysone.qa` con el nombre «Mysone QA» y sin depurable, con http:// permitido solo a `10.0.2.2` y `localhost` para probarla contra `tools/mock-llm.mjs`.
@@ -118,7 +120,7 @@ no existe (R8 lo elimina).
 export MSYS_NO_PATHCONV=1   # Git Bash: si no, convierte /data/... en una ruta de Windows
 ffmpeg -i conv1.wav -f s16le -ac 1 -ar 16000 mic.pcm
 adb push mic.pcm /data/local/tmp/mic.pcm
-adb shell "run-as dev.javieraguilera.mysone sh -c 'mkdir -p files/debug && cp /data/local/tmp/mic.pcm files/debug/'"
+adb shell "run-as dev.javieraguilera.mysone.debug sh -c 'mkdir -p files/debug && cp /data/local/tmp/mic.pcm files/debug/'"
 ```
 
 Después, empezar (o reanudar) la escucha en la app. Para repetir, volver a copiar `mic.pcm` y pausar y

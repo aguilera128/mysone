@@ -28,7 +28,10 @@ android {
         buildConfigField("boolean", "ALLOW_LOCAL_HTTP", "false")
     }
     buildTypes {
+        // Paquete aparte: con la misma firma, la debug se instalaría encima de la release del móvil y
+        // connectedDebugAndroidTest la desinstalaría al acabar, con todos sus datos.
         debug {
+            applicationIdSuffix = ".debug"
             buildConfigField("boolean", "ALLOW_LOCAL_HTTP", "true")
         }
         release {

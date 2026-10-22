@@ -662,7 +662,7 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   descargar/cancelar/borrar, probar, elegir; importar audio; llamadas; quién habla: modelo de voces y
   registrar/borrar tu voz); IA (`SettingsAi`: preset, URL, modelos,
   clave —campo de contraseña, nunca se muestra entera—, **aviso de envío con aceptación**, probar
-  conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, ocultar en capturas,
+  conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, que pide confirmar si se acorta, ocultar en capturas,
   exportar JSON con aviso, borrar todo con doble confirmación); Batería (abrir excepción de
   optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>); Acerca de (versión,
   licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA, ERes2Net de 3D-Speaker Apache-2.0).

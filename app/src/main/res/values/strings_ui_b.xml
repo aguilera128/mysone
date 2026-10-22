@@ -259,6 +259,9 @@
     <string name="privacy_retention_never">No borrar nunca</string>
     <string name="privacy_retention_default">Recomendado</string>
     <string name="privacy_retention_note">El borrado se hace una vez al día.</string>
+    <string name="privacy_retention_confirm_title">¿Acortar el plazo?</string>
+    <string name="privacy_retention_confirm_message">En el próximo borrado diario, que puede ser dentro de unos minutos, se borrará para siempre el texto literal de más de %1$d días, con la cita de cada tarea y el chat de Preguntar. Los resúmenes, tareas y recuerdos se conservan.</string>
+    <string name="privacy_retention_confirm">Acortar</string>
     <string name="privacy_secure_screen">Ocultar en capturas</string>
     <string name="privacy_secure_screen_desc">Impide capturas y grabaciones de pantalla, y oculta el contenido en la vista de apps recientes.</string>
     <string name="privacy_section_export">Exportar</string>

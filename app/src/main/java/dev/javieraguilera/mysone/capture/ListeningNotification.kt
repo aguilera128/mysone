@@ -59,6 +59,16 @@ object ListeningNotification {
             .setAuthenticationRequired(true)
             .build()
 
+    /** Fuera de la pausa: el "Reanudar" que alguien guardara (un oyente de notificaciones, un reloj) deja de valer. */
+    internal fun cancelResume(context: Context) {
+        PendingIntent.getService(
+            context,
+            RC_RESUME,
+            ListeningController.intent(context, ListeningController.ACTION_RESUME),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE,
+        )?.cancel()
+    }
+
     internal fun openApp(context: Context): PendingIntent? =
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
             PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

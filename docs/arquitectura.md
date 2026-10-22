@@ -309,7 +309,11 @@ class AppContainer(val app: Application) {
 
 ### 5.1 Servicio `ListeningService`
 - `foregroundServiceType="microphone"`, `exported=false`. Acciones por `Intent`: `START`, `STOP`,
-  `PAUSE` (extra minutos), `RESUME`. `START_STICKY`.
+  `PAUSE` (extra minutos), `RESUME`, `PAUSE_END` (solo la alarma de fin de pausa). `START_STICKY`.
+- `START` y `RESUME` se ignoran con el móvil bloqueado (`KeyguardManager.isDeviceLocked`), comprobado ya en primer
+  plano: el "Reanudar" de las notificaciones pide desbloquear solo en la interfaz del sistema, y quien guarde su
+  `PendingIntent` (un oyente de notificaciones, un reloj) podría enviarlo sin hacerlo. Esos `PendingIntent` se
+  cancelan al salir de la pausa y al quitar el aviso "La escucha se ha detenido" (al escuchar o detener).
 - `onStartCommand`: **lo primero** `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_MICROPHONE)`
   dentro de `try/catch` (`ForegroundServiceStartNotAllowedException`, `SecurityException`, …). Si falla:
   estado `Error`, `ResumeNotifier.show()` ("La escucha se ha detenido" con la acción "Reanudar", que pide

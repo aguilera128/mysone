@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.capture
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -175,6 +176,14 @@ class ListeningService : Service() {
         }
         val minutes = intent?.getIntExtra(EXTRA_MINUTES, 0) ?: 0
         command(startId) {
+            // START y RESUME vienen de la app (abierta, así que desbloqueada) o de un "Reanudar" de notificación, que
+            // pide desbloquear solo si lo pulsa el usuario en la interfaz del sistema: quien guarde su PendingIntent
+            // (un oyente de notificaciones, un reloj) puede enviarlo con el móvil bloqueado. Ya en primer plano, que
+            // un getForegroundService que no llega a startForeground hace que el sistema cierre la app.
+            if ((action == ACTION_START || action == ACTION_RESUME) && deviceLocked()) {
+                Log.w(TAG, "Orden para abrir el micro con el móvil bloqueado: se ignora")
+                return@command
+            }
             when (action) {
                 ACTION_START -> {
                     c.settings.update { it.copy(listeningEnabled = true) }
@@ -274,6 +283,8 @@ class ListeningService : Service() {
         // Otra vez: un "detener" anterior pudo quitar el primer plano mientras esta orden esperaba.
         if (!enterForeground()) return giveUp(Error(getString(R.string.capture_error_start)), retry = true)
         ResumeNotifier.cancel(this)
+        // enterForeground acaba de publicar la notificación todavía en pausa, con un "Reanudar" nuevo.
+        ListeningNotification.cancelResume(this)
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return giveUp(NeedsPermission)
         val s = c.settings.current()
         if (!c.models.isInstalled(s.asrModelId)) {
@@ -343,6 +354,7 @@ class ListeningService : Service() {
             remove(KEY_PAUSE_END)
         }
         getSystemService(AlarmManager::class.java).cancel(resumeAlarm(this))
+        ListeningNotification.cancelResume(this)
     }
 
     private suspend fun stop() {
@@ -619,6 +631,9 @@ class ListeningService : Service() {
     }
 
     private fun now() = System.currentTimeMillis()
+
+    /** Bloqueado con PIN, patrón o contraseña (sin bloqueo seguro, cualquiera puede desbloquear: false). */
+    private fun deviceLocked() = getSystemService(KeyguardManager::class.java).isDeviceLocked
 
     companion object {
         private const val TAG = "ListeningService"

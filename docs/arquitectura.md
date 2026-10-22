@@ -332,6 +332,9 @@ class AppContainer(val app: Application) {
   desbloquear el móvil) y `stopSelf()`.
 - Intent nulo (reinicio sticky): si `listeningEnabled`, intentar reanudar; si el micro no abre,
   `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido.
+- Parado por el sistema sin matar el proceso (`onDestroy` con la captura en marcha): `Off` y `ResumeNotifier` en el
+  momento, sin esperar al mantenimiento; el latido deja el hueco `KILLED`. El nivel del micro solo se publica con la
+  captura abierta, para que el último que llega al soltarla no vuelva a poner `Listening`.
 - Comprobaciones antes de capturar: permiso `RECORD_AUDIO` (si no: `NeedsPermission`), modelo
   instalado (si no: `NeedsModel`, no se graba), `transcriber.acquire()`. Borrar el último modelo con la escucha en
   marcha o en pausa la para igual (`NeedsModel`, se suelta el micro). `NeedsModel` pasa a `Off` en cuanto hay un

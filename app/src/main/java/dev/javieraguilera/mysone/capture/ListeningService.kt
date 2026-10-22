@@ -218,11 +218,15 @@ class ListeningService : Service() {
         command(startId) { giveUp(Error(getString(R.string.capture_error_start)), retry = true) }
     }
 
-    /** Solo llega aquí sin pasar por detener si lo para el sistema: el latido queda para el hueco KILLED. */
+    /**
+     * Solo llega aquí sin pasar por detener si lo para el sistema: el latido queda para el hueco KILLED, y el aviso
+     * de reanudar sale ya, no con el próximo mantenimiento (30 min o más).
+     */
     override fun onDestroy() {
         running = false
         val cap = capture
         capture = null
+        if (cap != null) ResumeNotifier.show(applicationContext)
         val job = session
         val asr = asrThread
         val release = acquired
@@ -578,8 +582,9 @@ class ListeningService : Service() {
 
     // ---- Estado y notificación ----
 
-    /** Desde el hilo de captura, 4 veces por segundo. */
+    /** Desde el hilo de captura, 4 veces por segundo. Sin captura, no: el último nivel al soltar el micro pisaría el Off. */
     private fun publishLive(level: Float) {
+        if (capture == null) return
         ListeningController.publish(if (silenced) MicBusy else Listening(level, pending))
     }
 

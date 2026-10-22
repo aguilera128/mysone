@@ -73,6 +73,29 @@ class ProcessingTest {
         assertEquals(3, p.facts.size) // máximo 3
     }
 
+    @Test fun `con hablantes cada línea dice quién habla y la cita de la tarea sale sin la marca`() {
+        val c = Conversation(id = 7, startedAt = start, endedAt = start + 6 * 60_000, source = ConvSource.CALL, state = ConvState.PROCESSING)
+        val segs = listOf(
+            Segment(1, 7, ms(2026, 10, 15, 18, 42, 10), 0, "¿Me mandas el contrato?", speaker = 2),
+            Segment(2, 7, ms(2026, 10, 15, 18, 42, 14), 0, "Sí, mañana te lo envío.", speaker = 0),
+            Segment(3, 7, ms(2026, 10, 15, 18, 42, 20), 0, "Vale, gracias."),
+        )
+        val expected = """
+            <transcripcion>
+            [18:42:10] Hablante 2: ¿Me mandas el contrato?
+            [18:42:14] Tú: Sí, mañana te lo envío.
+            [18:42:20] Vale, gracias.
+            </transcripcion>
+        """.trimIndent()
+        assertTrue(processInput(c, segs, emptyList(), 1, 1, madrid).endsWith(expected))
+        val tasks = validTasks(
+            listOf(TaskOut("Enviar el contrato", quote = "Tú: Sí, mañana te lo envío."), TaskOut("Pagar la luz", quote = "Hablante 12:  Paga la luz")),
+            start, madrid, emptyList(),
+        )
+        assertEquals(listOf("Sí, mañana te lo envío.", "Paga la luz"), tasks.map { it.quote })
+        assertEquals("", speakerPrefix(null))
+    }
+
     @Test fun `no repite tareas ya registradas`() {
         val p = validate(decodeOutput(sample), start, madrid, registered = listOf("Llamar  al TALLER"))
         assertEquals(listOf("Mirar vuelos"), p.tasks.map { it.text })
@@ -262,10 +285,10 @@ class ProcessingTest {
     }
 
     @Test fun `los prompts empiezan por su etiqueta y el de procesado es largo`() {
-        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v2\n"))
-        assertTrue(Prompts.REMINDER.startsWith("mysone:recordatorio v1\n"))
+        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v3\n"))
+        assertTrue(Prompts.REMINDER.startsWith("mysone:recordatorio v2\n"))
         assertTrue(Prompts.PLAN.startsWith("mysone:planificar v1\n"))
-        assertTrue(Prompts.ANSWER.startsWith("mysone:responder v1\n"))
+        assertTrue(Prompts.ANSWER.startsWith("mysone:responder v2\n"))
         assertTrue(Prompts.DIGEST.startsWith("mysone:resumen-diario v1\n"))
         assertTrue(Prompts.TEST.startsWith("mysone:prueba v1\n"))
         // ≥ 512 tokens para que cachee: en español sale a más de 3 caracteres por token.

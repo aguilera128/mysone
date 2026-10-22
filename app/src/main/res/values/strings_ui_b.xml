@@ -251,6 +251,7 @@
     <string name="voices_enroll_saving">Guardando tu voz…</string>
     <string name="voice_error_mic">No se puede usar el micrófono. Comprueba el permiso y que ninguna otra app esté grabando.</string>
     <string name="voice_error_model">Falta el modelo de voces. Descárgalo e inténtalo otra vez.</string>
+    <string name="voice_error_save">No se ha podido guardar tu voz. Inténtalo otra vez.</string>
 
     <!-- Ajustes › Privacidad -->
     <string name="privacy_section_retention">Conservar la transcripción</string>

@@ -3,6 +3,7 @@ package dev.javieraguilera.mysone.ui.settings
 import android.media.MediaRecorder
 import android.net.Uri
 import android.text.format.Formatter
+import android.util.Log
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -85,6 +86,7 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import dev.javieraguilera.mysone.ui.today.dayFull
 import java.time.LocalDate
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -291,13 +293,21 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
         _enroll.value = Enroll.Saving
         stopCapture()
         container.appScope.launch {
-            val ok = OwnerVoice.enroll(container.app, models, synchronized(speech) { speech.toList() })
+            // null: ha fallado al calcular o guardar la huella. Sin capturarlo, «Guardando…» no se cerraría nunca.
+            val ok = try {
+                OwnerVoice.enroll(container.app, models, synchronized(speech) { speech.toList() })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) { // también UnsatisfiedLinkError, como en Diarizer.open
+                Log.w("MysoneAsr", "No se pudo registrar la voz: ${e.javaClass.simpleName}")
+                null
+            }
             synchronized(speech) { speech.clear() }
-            if (ok) {
+            if (ok == true) {
                 _ownerVoice.value = true
                 _enroll.value = null
             } else {
-                _enroll.value = Enroll.Failed(R.string.voice_error_model)
+                _enroll.value = Enroll.Failed(if (ok == false) R.string.voice_error_model else R.string.voice_error_save)
             }
         }
     }

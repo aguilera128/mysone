@@ -1,5 +1,8 @@
 package dev.javieraguilera.mysone.ai
 
+import dev.javieraguilera.mysone.core.AppJson
+import dev.javieraguilera.mysone.data.ChatMessage
+import dev.javieraguilera.mysone.data.ChatRole
 import dev.javieraguilera.mysone.data.ConvSource
 import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
@@ -8,8 +11,11 @@ import dev.javieraguilera.mysone.data.FactState
 import dev.javieraguilera.mysone.data.Segment
 import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
+import dev.javieraguilera.mysone.tasks.DataManager
+import dev.javieraguilera.mysone.ui.ask.parseCitations
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -21,10 +27,29 @@ class AskEngineTest {
     /** Jueves 15-oct-2026 18:42 en Madrid. */
     private val now = ZonedDateTime.of(2026, 10, 15, 18, 42, 0, 0, madrid).toInstant().toEpochMilli()
 
-    @Test fun `citas en orden, sin repetir y solo con el formato exacto`() {
+    @Test fun `citas en orden y sin repetir`() {
         assertEquals(listOf(42L, 7L), Citations.parse("Quedaste con Marta [c:42]. Y con Ana [c:7][c:42]."))
         assertEquals(emptyList<Long>(), Citations.parse("Sin citas [c:] [c:abc] [c 5] c:6 [C:8]"))
         assertEquals(listOf(99999999999L), Citations.parse("[c:99999999999]"))
+        // Un número que no cabe en un Long no es una cita y no hace fallar la pregunta (antes, toLong() lanzaba).
+        assertEquals("Nada [c:99999999999999999999].", Citations.canonical("Nada [c:99999999999999999999].", setOf(1L)))
+        // Un [c: sin cerrar no se lleva el texto hasta el siguiente marcador.
+        assertEquals("Uno [c: dos [c:5]", Citations.canonical("Uno [c: dos [c:5]", setOf(5L)))
+    }
+
+    @Test fun `una cita combinada se guarda y se borra como la ve la pantalla`() {
+        for (raw in listOf("Quedaste con Ana el viernes [c:12, 13].", "Quedaste con Ana el viernes [c:12, c:13].", "Quedaste con Ana el viernes [c: 12].")) {
+            assertEquals(raw, parseCitations(raw).ids, Citations.parse(raw))
+            // Lo que guarda AskEngine.ask sin resúmenes diarios en el contexto, con la 13 ya borrada.
+            val existing = Citations.parse(raw).toSet() - 13L
+            val text = Citations.canonical(raw, existing)
+            assertEquals(raw, "Quedaste con Ana el viernes [c:12].", text)
+            val chat = listOf(
+                ChatMessage(1, ChatRole.USER, "¿Con quién quedé?", createdAt = now),
+                ChatMessage(2, ChatRole.ASSISTANT, text, citations = AppJson.encodeToString(existing.sorted()), createdAt = now),
+            )
+            assertEquals(raw, listOf(2L, 1L), DataManager.chatToForget(chat, setOf(12L)))
+        }
     }
 
     @Test fun `consulta FTS con OR de los términos del planificador`() {

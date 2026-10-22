@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.ui.ask
 
 import androidx.annotation.StringRes
 import dev.javieraguilera.mysone.R
+import dev.javieraguilera.mysone.ai.Citations
 import dev.javieraguilera.mysone.ai.DiscardedAnswer
 import dev.javieraguilera.mysone.ai.LlmException
 import java.io.IOException
@@ -9,14 +10,14 @@ import java.io.IOException
 /** Respuesta sin los marcadores [c:ID] y los IDs citados, en orden de aparición y sin repetir. */
 data class CitedText(val text: String, val ids: List<Long>)
 
-private val MARKER = Regex("""[ \t]*\[c:([^\]]*)]""")
-private val NUMBER = Regex("""\d+""")
+// La gramática de Citations (la misma con la que se guardan), con el espacio de antes.
+private val MARKER = Regex("""[ \t]*""" + Citations.MARKER.pattern)
 
 /** Admite [c:12], [c:12, 13] y [c:12, c:13]. Un marcador sin números se deja tal cual. */
 fun parseCitations(raw: String): CitedText {
     val ids = LinkedHashSet<Long>()
     val text = MARKER.replace(raw) { m ->
-        val found = NUMBER.findAll(m.groupValues[1]).mapNotNull { it.value.toLongOrNull() }.toList()
+        val found = Citations.ids(m)
         if (found.isEmpty()) m.value else "".also { ids += found }
     }
     return CitedText(text.trim(), ids.toList())

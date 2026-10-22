@@ -124,15 +124,15 @@ class AskEngine(private val container: AppContainer) {
             val cited = Citations.parse(raw)
             val existing = if (cited.isEmpty()) emptySet() else container.db.conversations().byIds(cited).mapTo(mutableSetOf()) { it.id }
             // Un marcador a una conversación que no existe no lleva a ningún sitio: fuera.
-            val text = Citations.MARKER.replace(raw) { if (it.groupValues[1].toLong() in existing) it.value else "" }.trim()
+            val text = Citations.canonical(raw, existing).trim()
             // Vacía (o solo con marcadores a conversaciones borradas): guardada, la API rechazaría el historial siguiente.
             if (text.isEmpty()) throw LlmException(LlmErrorKind.BAD_OUTPUT, "Respuesta vacía")
             val answer = ChatMessage(
                 role = ChatRole.ASSISTANT,
                 text = text,
-                // Las citadas y las que no se pueden citar: con cualquiera de ellas se borra (§7.5). No todas las del
-                // contexto: casi cualquier conversación reciente está en él y borrarla vaciaría el chat.
-                citations = AppJson.encodeToString((existing + context.uncitable).sorted()),
+                // Las citadas y las de los resúmenes y fragmentos: con cualquiera de ellas se borra (§7.5). No todas las
+                // del contexto: casi cualquier conversación reciente está en él y borrarla vaciaría el chat.
+                citations = AppJson.encodeToString((existing + context.implicitCitations).sorted()),
                 createdAt = System.currentTimeMillis(),
             )
             val saved = container.db.withWriteTransaction {
@@ -218,13 +218,26 @@ class AskEngine(private val container: AppContainer) {
 /** Se ha olvidado o borrado algo mientras llegaba la respuesta, que podía traerlo: no se guarda (no es un fallo del proveedor). */
 class DiscardedAnswer : IllegalStateException("Datos cambiados durante la pregunta")
 
+/**
+ * La única gramática de las citas, para guardarlas (y borrar con ellas, §7.5) y para enseñarlas: `[c:12]`, y también
+ * `[c:12, 13]`, `[c:12, c:13]` o `[c: 12]`, que el modelo escribe a veces. Un marcador sin números no es una cita.
+ */
 object Citations {
-    /** `[c:123]` → 123 en el grupo 1. */
-    val MARKER = Regex("""\[c:(\d+)]""")
+    /** El grupo 1 lleva los números. Sin corchetes dentro: un `[c:` sin cerrar no se come el texto hasta el siguiente `]`. */
+    val MARKER = Regex("""\[c:([^\[\]]*)]""")
+    private val NUMBER = Regex("""\d+""")
+
+    /** IDs de un marcador de [MARKER]. */
+    fun ids(marker: MatchResult): List<Long> = NUMBER.findAll(marker.groupValues[1]).mapNotNull { it.value.toLongOrNull() }.toList()
 
     /** IDs citados, sin repetir, en orden de aparición. */
-    fun parse(text: String): List<Long> =
-        MARKER.findAll(text).mapNotNull { it.groupValues[1].toLongOrNull() }.distinct().toList()
+    fun parse(text: String): List<Long> = MARKER.findAll(text).flatMap { ids(it) }.distinct().toList()
+
+    /** Cada marcador como `[c:N]` de los ids de [keep] (`[c:12, 13]` → `[c:12][c:13]`); sin ninguno, fuera. */
+    fun canonical(text: String, keep: Set<Long>): String = MARKER.replace(text) { m ->
+        val ids = ids(m)
+        if (ids.isEmpty()) m.value else ids.filter { it in keep }.joinToString("") { "[c:$it]" }
+    }
 }
 
 internal class AskContext(
@@ -237,12 +250,13 @@ internal class AskContext(
     val digestSources: List<Long> = emptyList(),
 ) {
     /**
-     * Conversaciones de las que sale algo de lo enviado sin `[c:ID]` con que citarlas: las de los resúmenes diarios.
-     * Resúmenes, fragmentos, tareas y datos llevan su marcador, y la respuesta cita lo que usa de ellos. Los datos
-     * confirmados van siempre (hasta 100): si contaran todos, borrar una conversación con un dato vaciaría el chat.
+     * Conversaciones que cuentan como citadas aunque la respuesta no las cite: las de los resúmenes diarios, que no
+     * llevan `[c:ID]`, y las de los fragmentos, que van literales y el modelo puede copiar sin citarlos (o con la
+     * cita de otra). Tareas, datos y conversaciones solo cuentan si se citan: los datos confirmados van siempre (hasta
+     * 100) y las conversaciones del rango, hasta 60; si contaran todos, borrar una conversación vaciaría el chat.
      */
-    val uncitable: List<Long>
-        get() = digestSources.distinct().sorted()
+    val implicitCitations: List<Long>
+        get() = (digestSources + segments.map { it.conversationId }).distinct().sorted()
 }
 
 private val WORD = Regex("[\\p{L}\\p{N}]+")

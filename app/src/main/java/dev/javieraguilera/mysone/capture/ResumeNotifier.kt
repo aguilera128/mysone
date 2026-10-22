@@ -26,12 +26,7 @@ object ResumeNotifier {
      * (también si se ha descartado) y no deben despertar a nadie cada 30 min. [cancel] cierra la interrupción.
      */
     fun show(context: Context) {
-        val start = PendingIntent.getForegroundService(
-            context,
-            RC_START,
-            ListeningController.intent(context, ListeningController.ACTION_START),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val start = start(context, PendingIntent.FLAG_UPDATE_CURRENT)!!
         // "Detener" sin abrir el micro: quita la intención de escuchar y, con ella, este aviso.
         val stop = PendingIntent.getService(
             context,
@@ -56,8 +51,17 @@ object ResumeNotifier {
         prefs.edit { putBoolean(KEY_ALERTED, true) }
     }
 
+    /** También su "Reanudar": quien lo guardara (un oyente de notificaciones, un reloj) ya no puede volver a enviarlo. */
     fun cancel(context: Context) {
         context.getSystemService(NotificationManager::class.java).cancel(ID)
+        start(context, PendingIntent.FLAG_NO_CREATE)?.cancel()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { remove(KEY_ALERTED) }
     }
+
+    private fun start(context: Context, flags: Int): PendingIntent? = PendingIntent.getForegroundService(
+        context,
+        RC_START,
+        ListeningController.intent(context, ListeningController.ACTION_START),
+        PendingIntent.FLAG_IMMUTABLE or flags,
+    )
 }

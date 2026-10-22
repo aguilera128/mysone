@@ -309,7 +309,11 @@ class AppContainer(val app: Application) {
 
 ### 5.1 Servicio `ListeningService`
 - `foregroundServiceType="microphone"`, `exported=false`. Acciones por `Intent`: `START`, `STOP`,
-  `PAUSE` (extra minutos), `RESUME`. `START_STICKY`.
+  `PAUSE` (extra minutos), `RESUME`, `PAUSE_END` (solo la alarma de fin de pausa). `START_STICKY`.
+- `START` y `RESUME` se ignoran con el móvil bloqueado (`KeyguardManager.isDeviceLocked`), comprobado ya en primer
+  plano: el "Reanudar" de las notificaciones pide desbloquear solo en la interfaz del sistema, y quien guarde su
+  `PendingIntent` (un oyente de notificaciones, un reloj) podría enviarlo sin hacerlo. Esos `PendingIntent` se
+  cancelan al salir de la pausa y al quitar el aviso "La escucha se ha detenido" (al escuchar o detener).
 - `onStartCommand`: **lo primero** `ServiceCompat.startForeground(..., FOREGROUND_SERVICE_TYPE_MICROPHONE)`
   dentro de `try/catch` (`ForegroundServiceStartNotAllowedException`, `SecurityException`, …). Si falla:
   estado `Error`, `ResumeNotifier.show()` ("La escucha se ha detenido" con la acción "Reanudar", que pide
@@ -324,7 +328,9 @@ class AppContainer(val app: Application) {
   que siga abierto (la pausa al reanudar, un `KILLED`) pasa a `STOPPED`.
 - **Pausar no llama a `stopForeground()`**: se libera `AudioRecord` (se apaga el indicador del micro)
   y el servicio sigue en primer plano con la notificación "En pausa hasta HH:MM". La reanudación la
-  dispara una alarma exacta (`setExactAndAllowWhileIdle`) con `PendingIntent.getService(RESUME)`.
+  dispara una alarma exacta (`setExactAndAllowWhileIdle`, `ELAPSED_REALTIME_WAKEUP`) con
+  `PendingIntent.getService(PAUSE_END)`, que solo reanuda si `elapsedRealtime` ha llegado al fin: adelantar el reloj
+  del sistema (a mano o con la hora de red) no acorta la pausa.
 - `STOP`: libera todo, `listeningEnabled=false`, hueco `STOPPED`, `stopForeground(REMOVE)` + `stopSelf()`.
 - Notificación (canal `listening`, importancia baja, `setOngoing`, `FOREGROUND_SERVICE_IMMEDIATE`):
   título según estado, texto "N fragmentos hoy · M pendientes". Acciones: escuchando → *Pausar 15 min*,
@@ -497,9 +503,12 @@ programan. El procesado completo posterior recibe esas tareas como "ya registrad
    fechas relativas respecto a "ahora") + historial reciente + mensaje con el contexto y la pregunta.
 4. Se guardan pregunta y respuesta en `chat_message`, con `citations` = IDs citados que existan, más las
    conversaciones de los resúmenes diarios del contexto (no llevan `[c:ID]`: lo que salga de ellos no se puede
-   citar). Tareas y datos llevan el `[c:ID]` de su conversación. Borrar u olvidar una conversación borra las
+   citar) y las de los fragmentos enviados (van literales y el modelo puede copiarlos sin citarlos o con la cita de
+   otra). Tareas y datos llevan el `[c:ID]` de su conversación. Borrar u olvidar una conversación borra las
    respuestas cuyo `citations` la incluye y su pregunta; no todas las de su contexto, que con hasta 60 conversaciones
-   del rango (y los 100 datos confirmados, que van siempre) vaciaría el chat casi siempre.
+   del rango (y los 100 datos confirmados, que van siempre) vaciaría el chat casi siempre. Una sola gramática de
+   citas (`Citations`) para guardar y para la pantalla: también `[c:12, 13]` o `[c: 12]`, que se guardan como
+   `[c:12][c:13]`.
 5. Si falla, la pregunta queda guardada para "Reintentar"; al cerrar el aviso o hacer otra pregunta, sale del chat.
    Si se olvida o borra algo mientras llega, la respuesta se descarta y el aviso lo dice.
 Sin IA configurada: la pantalla lo explica y ofrece la búsqueda local.

@@ -44,6 +44,9 @@ object ListeningController {
     internal const val ACTION_STOP = "dev.javieraguilera.mysone.capture.STOP"
     internal const val ACTION_PAUSE = "dev.javieraguilera.mysone.capture.PAUSE"
     internal const val ACTION_RESUME = "dev.javieraguilera.mysone.capture.RESUME"
+
+    /** Solo la alarma de fin de pausa: reanuda si la pausa ha durado de verdad lo elegido. */
+    internal const val ACTION_PAUSE_END = "dev.javieraguilera.mysone.capture.PAUSE_END"
     internal const val EXTRA_MINUTES = "minutes"
     private const val TAG = "ListeningController"
 

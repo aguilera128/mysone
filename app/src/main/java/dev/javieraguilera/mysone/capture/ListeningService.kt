@@ -2,6 +2,7 @@ package dev.javieraguilera.mysone.capture
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -13,6 +14,7 @@ import android.media.MediaRecorder
 import android.os.BatteryManager
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.edit
@@ -22,6 +24,7 @@ import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.asr.TranscriberState
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_PAUSE
+import dev.javieraguilera.mysone.capture.ListeningController.ACTION_PAUSE_END
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_RESUME
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_START
 import dev.javieraguilera.mysone.capture.ListeningController.ACTION_STOP
@@ -148,7 +151,7 @@ class ListeningService : Service() {
         val action = intent?.action
         when (action) {
             ACTION_STOP -> stopRequested = true
-            ACTION_START, ACTION_RESUME -> stopRequested = false
+            ACTION_START, ACTION_RESUME, ACTION_PAUSE_END -> stopRequested = false
         }
         // Lo primero: después de startForegroundService el sistema da unos segundos (02 §2).
         // STOP llega con startService y no lo necesita.
@@ -173,18 +176,36 @@ class ListeningService : Service() {
         }
         val minutes = intent?.getIntExtra(EXTRA_MINUTES, 0) ?: 0
         command(startId) {
+            // START y RESUME vienen de la app (abierta, así que desbloqueada) o de un "Reanudar" de notificación, que
+            // pide desbloquear solo si lo pulsa el usuario en la interfaz del sistema: quien guarde su PendingIntent
+            // (un oyente de notificaciones, un reloj) puede enviarlo con el móvil bloqueado. Ya en primer plano, que
+            // un getForegroundService que no llega a startForeground hace que el sistema cierre la app.
+            if ((action == ACTION_START || action == ACTION_RESUME) && deviceLocked()) {
+                Log.w(TAG, "Orden para abrir el micro con el móvil bloqueado: se ignora")
+                return@command
+            }
             when (action) {
                 ACTION_START -> {
                     c.settings.update { it.copy(listeningEnabled = true) }
                     clearPause()
                     listen()
                 }
-                // También la alarma de fin de pausa: tras detener o "Borrar todo" ya no hay nada que reanudar.
+                // Tras detener o "Borrar todo" ya no hay nada que reanudar.
                 ACTION_RESUME -> if (c.settings.current().listeningEnabled) {
                     clearPause()
                     listen()
                 }
-                ACTION_PAUSE -> if (active) pauseUntil(now() + minutes * 60_000L)
+                // La alarma: con el reloj del sistema adelantado (a mano o por la hora de red) no reanuda antes de tiempo.
+                ACTION_PAUSE_END -> if (c.settings.current().listeningEnabled) {
+                    val end = prefs.getLong(KEY_PAUSE_END, 0)
+                    if (end > SystemClock.elapsedRealtime()) {
+                        if (pausedUntil > 0) scheduleResume(this, end)
+                    } else {
+                        clearPause()
+                        listen()
+                    }
+                }
+                ACTION_PAUSE -> if (active) pauseUntil(now() + minutes * 60_000L, SystemClock.elapsedRealtime() + minutes * 60_000L)
                 ACTION_STOP -> stop()
                 null -> restart() // reinicio sticky tras matar el proceso
             }
@@ -247,8 +268,10 @@ class ListeningService : Service() {
     private suspend fun restart() {
         if (!c.settings.current().listeningEnabled) return
         val until = prefs.getLong(KEY_PAUSED_UNTIL, 0)
-        if (until > now()) {
-            pauseUntil(until)
+        val end = prefs.getLong(KEY_PAUSE_END, 0)
+        // Sin reiniciar el móvil (si no, el servicio no vuelve solo), elapsedRealtime sigue contando desde la pausa.
+        if (until > 0 && end > SystemClock.elapsedRealtime()) {
+            pauseUntil(until, end)
         } else {
             clearPause()
             listen()
@@ -260,6 +283,8 @@ class ListeningService : Service() {
         // Otra vez: un "detener" anterior pudo quitar el primer plano mientras esta orden esperaba.
         if (!enterForeground()) return giveUp(Error(getString(R.string.capture_error_start)), retry = true)
         ResumeNotifier.cancel(this)
+        // enterForeground acaba de publicar la notificación todavía en pausa, con un "Reanudar" nuevo.
+        ListeningNotification.cancelResume(this)
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return giveUp(NeedsPermission)
         val s = c.settings.current()
         if (!c.models.isInstalled(s.asrModelId)) {
@@ -303,16 +328,20 @@ class ListeningService : Service() {
         refreshNotification()
     }
 
-    /** Suelta el micro (se apaga el indicador) sin salir de primer plano; una alarma exacta reanuda. */
-    private suspend fun pauseUntil(until: Long) {
+    /**
+     * Suelta el micro (se apaga el indicador) sin salir de primer plano; una alarma exacta reanuda en [end]
+     * (elapsedRealtime). [until] es la misma hora en el reloj del sistema, solo para enseñarla.
+     */
+    private suspend fun pauseUntil(until: Long, end: Long) {
         stopCapture()
         pausedUntil = until
         // Sin latido: si el sistema nos mata en pausa no se pierde nada, el hueco PAUSED ya lo cubre.
         prefs.edit {
             putLong(KEY_PAUSED_UNTIL, until)
+            putLong(KEY_PAUSE_END, end)
             remove(KEY_ALIVE)
         }
-        scheduleResume(this, until)
+        scheduleResume(this, end)
         book.withLock { openGapLocked(GapReason.PAUSED) }
         ListeningController.publish(Paused(until))
         refreshNotification()
@@ -320,8 +349,12 @@ class ListeningService : Service() {
 
     private fun clearPause() {
         pausedUntil = 0
-        prefs.edit { remove(KEY_PAUSED_UNTIL) }
+        prefs.edit {
+            remove(KEY_PAUSED_UNTIL)
+            remove(KEY_PAUSE_END)
+        }
         getSystemService(AlarmManager::class.java).cancel(resumeAlarm(this))
+        ListeningNotification.cancelResume(this)
     }
 
     private suspend fun stop() {
@@ -599,11 +632,15 @@ class ListeningService : Service() {
 
     private fun now() = System.currentTimeMillis()
 
+    /** Bloqueado con PIN, patrón o contraseña (sin bloqueo seguro, cualquiera puede desbloquear: false). */
+    private fun deviceLocked() = getSystemService(KeyguardManager::class.java).isDeviceLocked
+
     companion object {
         private const val TAG = "ListeningService"
         private const val PREFS = "capture"
         private const val KEY_ALIVE = "lastAliveAt"
         private const val KEY_PAUSED_UNTIL = "pausedUntil"
+        private const val KEY_PAUSE_END = "pauseEndElapsed"
         private const val RC_RESUME_ALARM = 20
         private const val NOTIFY_EVERY_MS = 10_000L
         private const val TIMER_MS = 15_000L
@@ -663,34 +700,41 @@ class ListeningService : Service() {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
                 remove(KEY_ALIVE)
                 remove(KEY_PAUSED_UNTIL)
+                remove(KEY_PAUSE_END)
             }
             context.getSystemService(AlarmManager::class.java).cancel(resumeAlarm(context))
         }
 
         /**
          * Sin servicio (un reinicio borra las alarmas) y con una pausa que aún no ha acabado: vuelve a poner la
-         * alarma de reanudar, que avisa a su hora. true si es así.
+         * alarma de reanudar, que avisa a su hora. true si es así. Tras un reinicio elapsedRealtime vuelve a cero y
+         * solo queda el reloj del sistema; sin servicio, la alarma tampoco abre el micro sola (avisa con
+         * "Toca para reanudar").
          */
         internal fun rearmPause(context: Context): Boolean {
-            val until = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_PAUSED_UNTIL, 0)
-            if (until <= System.currentTimeMillis()) return false
-            scheduleResume(context, until)
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val left = prefs.getLong(KEY_PAUSED_UNTIL, 0) - System.currentTimeMillis()
+            if (left <= 0) return false
+            val end = SystemClock.elapsedRealtime() + left
+            prefs.edit { putLong(KEY_PAUSE_END, end) }
+            scheduleResume(context, end)
             return true
         }
 
-        private fun scheduleResume(context: Context, until: Long) {
+        /** [end] en elapsedRealtime: un cambio de hora del sistema no adelanta el fin de la pausa. */
+        private fun scheduleResume(context: Context, end: Long) {
             val am = context.getSystemService(AlarmManager::class.java)
             if (am.canScheduleExactAlarms()) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm(context))
+                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, end, resumeAlarm(context))
             } else {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, until, resumeAlarm(context))
+                am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, end, resumeAlarm(context))
             }
         }
 
         private fun resumeAlarm(context: Context) = PendingIntent.getService(
             context,
             RC_RESUME_ALARM,
-            ListeningController.intent(context, ACTION_RESUME),
+            ListeningController.intent(context, ACTION_PAUSE_END),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }

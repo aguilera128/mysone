@@ -1,7 +1,10 @@
 package dev.javieraguilera.mysone.capture
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.AlarmManager
+import android.app.ApplicationExitInfo
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -218,11 +221,15 @@ class ListeningService : Service() {
         command(startId) { giveUp(Error(getString(R.string.capture_error_start)), retry = true) }
     }
 
-    /** Solo llega aquí sin pasar por detener si lo para el sistema: el latido queda para el hueco KILLED. */
+    /**
+     * Solo llega aquí sin pasar por detener si lo para el sistema: el latido queda para el hueco KILLED, y el aviso
+     * de reanudar sale ya, no con el próximo mantenimiento (30 min o más).
+     */
     override fun onDestroy() {
         running = false
         val cap = capture
         capture = null
+        if (cap != null) ResumeNotifier.show(applicationContext)
         val job = session
         val asr = asrThread
         val release = acquired
@@ -473,6 +480,9 @@ class ListeningService : Service() {
     private suspend fun enqueueLocked(chunk: VoiceChunk) {
         // Dicho antes de pulsar "Olvidar" y aún en la VAD o en el canal: no se guarda.
         if (ListeningController.isForgotten(chunk.startMs, chunk.endMs)) return
+        // Con el disco lleno fallaría la escritura sin dejar rastro: se para antes, con margen para que quepa el hueco.
+        if (filesDir.usableSpace < MIN_FREE_BYTES) return openGapLocked(GapReason.STORAGE)
+        closeGapLocked(GapReason.STORAGE)
         // ponytail: el tope cuenta la cola entera con una suma por trozo; basta con miles de filas.
         if (queue.totalDurationMs() >= MAX_QUEUE_MS) return openGapLocked(GapReason.BATTERY)
         closeGapLocked(GapReason.BATTERY)
@@ -578,8 +588,9 @@ class ListeningService : Service() {
 
     // ---- Estado y notificación ----
 
-    /** Desde el hilo de captura, 4 veces por segundo. */
+    /** Desde el hilo de captura, 4 veces por segundo. Sin captura, no: el último nivel al soltar el micro pisaría el Off. */
     private fun publishLive(level: Float) {
+        if (capture == null) return
         ListeningController.publish(if (silenced) MicBusy else Listening(level, pending))
     }
 
@@ -639,6 +650,9 @@ class ListeningService : Service() {
         private const val TAG = "ListeningService"
         private const val PREFS = "capture"
         private const val KEY_ALIVE = "lastAliveAt"
+        private const val KEY_EXIT_REASON = "lastExitReason"
+        private const val KEY_EXIT_AT = "lastExitAt"
+        private const val KEY_EXIT_MEM_LIMITER = "lastExitMemLimiter"
         private const val KEY_PAUSED_UNTIL = "pausedUntil"
         private const val KEY_PAUSE_END = "pauseEndElapsed"
         private const val RC_RESUME_ALARM = 20
@@ -649,6 +663,7 @@ class ListeningService : Service() {
         private const val DRAIN_MS = 30_000L
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_MS = 4 * 3_600_000L
+        private const val MIN_FREE_BYTES = 200L * 1024 * 1024
         private const val LOW_BATTERY = 20
 
         /**
@@ -674,9 +689,45 @@ class ListeningService : Service() {
             val alive = prefs.getLong(KEY_ALIVE, 0)
             if (alive > 0) {
                 openGap(c.db.gaps(), GapReason.KILLED, alive)
-                prefs.edit { remove(KEY_ALIVE) }
+                // Por qué, para Ajustes › Batería: lo que Android anotó de este proceso después del último latido. Si no
+                // anotó nada (o falla la consulta, que no debe dejar sin recoger lo demás), REASON_UNKNOWN y el latido.
+                val exit = runCatching {
+                    context.getSystemService(ActivityManager::class.java)
+                        .getHistoricalProcessExitReasons(context.packageName, 0, 5)
+                        .firstOrNull { it.timestamp >= alive && it.processName == context.packageName }
+                }.getOrNull()
+                prefs.edit {
+                    putInt(KEY_EXIT_REASON, exit?.reason ?: ApplicationExitInfo.REASON_UNKNOWN)
+                    putLong(KEY_EXIT_AT, exit?.timestamp ?: alive)
+                    putBoolean(KEY_EXIT_MEM_LIMITER, exit?.description?.contains("MemoryLimiter") == true)
+                    remove(KEY_ALIVE)
+                }
             }
             ConversationTracker(c.db.conversations(), { 0L }) { finishConversation(c, it) }.recoverOrphans()
+        }
+
+        /** El último cierre de la app con la escucha en marcha: texto del motivo y hora, o null si aún no ha habido. */
+        internal fun lastExit(context: Context): Pair<Int, Long>? {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val at = prefs.getLong(KEY_EXIT_AT, 0).takeIf { it > 0 } ?: return null
+            return exitReasonLabel(prefs.getInt(KEY_EXIT_REASON, 0), prefs.getBoolean(KEY_EXIT_MEM_LIMITER, false)) to at
+        }
+
+        /** [memLimiter]: el MemoryLimiter de Android 17, que llega como REASON_OTHER con su nombre en la descripción (02 §12). */
+        @SuppressLint("InlinedApi") // REASON_PACKAGE_UPDATED es de Android 14: antes no llega
+        internal fun exitReasonLabel(reason: Int, memLimiter: Boolean): Int = if (memLimiter) {
+            R.string.capture_exit_mem_limiter
+        } else {
+            when (reason) {
+                ApplicationExitInfo.REASON_LOW_MEMORY -> R.string.capture_exit_low_memory
+                ApplicationExitInfo.REASON_USER_REQUESTED -> R.string.capture_exit_user
+                ApplicationExitInfo.REASON_CRASH_NATIVE -> R.string.capture_exit_native
+                ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_ANR -> R.string.capture_exit_crash
+                ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> R.string.capture_exit_resources
+                ApplicationExitInfo.REASON_PACKAGE_UPDATED -> R.string.capture_exit_updated
+                ApplicationExitInfo.REASON_UNKNOWN -> R.string.capture_exit_unknown
+                else -> R.string.capture_exit_system
+            }
         }
 
         /**

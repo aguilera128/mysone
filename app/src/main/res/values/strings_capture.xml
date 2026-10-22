@@ -34,4 +34,16 @@
     <string name="capture_error_mic">No se ha podido abrir el micrófono</string>
     <string name="capture_error_mic_lost">Se ha perdido el acceso al micrófono</string>
     <string name="capture_error_model">No se ha podido cargar el modelo de transcripción</string>
+
+    <!-- Último cierre de la app con la escucha en marcha (Ajustes › Batería) -->
+    <string name="capture_last_exit">Último cierre de la app mientras escuchaba: %1$s (%2$s)</string>
+    <string name="capture_exit_low_memory">poca memoria</string>
+    <string name="capture_exit_mem_limiter">límite de memoria de Android</string>
+    <string name="capture_exit_user">detenida a mano</string>
+    <string name="capture_exit_native">fallo nativo</string>
+    <string name="capture_exit_crash">fallo de la app</string>
+    <string name="capture_exit_resources">exceso de consumo</string>
+    <string name="capture_exit_updated">actualización de la app</string>
+    <string name="capture_exit_unknown">Android no anotó el motivo</string>
+    <string name="capture_exit_system">el sistema</string>
 </resources>

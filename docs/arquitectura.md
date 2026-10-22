@@ -136,7 +136,7 @@ data class ChatMessage(@PrimaryKey(autoGenerate = true) val id: Long = 0,
 @Entity(tableName = "listening_gap", indices = [Index("startedAt")])
 data class ListeningGap(@PrimaryKey(autoGenerate = true) val id: Long = 0,
   val startedAt: Long, val endedAt: Long? = null,
-  val reason: String /* GapReason.PAUSED | STOPPED | MIC_BUSY | BATTERY | ERROR | KILLED */)
+  val reason: String /* GapReason.PAUSED | STOPPED | MIC_BUSY | BATTERY | ERROR | KILLED | STORAGE */)
 ```
 
 Las FK de `task` y `fact` borran en cascada: borrar u olvidar una conversación borra lo derivado
@@ -332,7 +332,12 @@ class AppContainer(val app: Application) {
   estado `Error`, `ResumeNotifier.show()` ("La escucha se ha detenido" con la acción "Reanudar", que pide
   desbloquear el móvil) y `stopSelf()`.
 - Intent nulo (reinicio sticky): si `listeningEnabled`, intentar reanudar; si el micro no abre,
-  `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido.
+  `ResumeNotifier`. Registrar hueco `KILLED` desde el último instante conocido, y el motivo que dio Android
+  (`getHistoricalProcessExitReasons`, el primero de este proceso posterior al latido; `REASON_UNKNOWN` si no hay) en las
+  prefs `capture`: solo el último, que Ajustes › Batería enseña como «Último cierre de la app mientras escuchaba».
+- Parado por el sistema sin matar el proceso (`onDestroy` con la captura en marcha): `Off` y `ResumeNotifier` en el
+  momento, sin esperar al mantenimiento; el latido deja el hueco `KILLED`. El nivel del micro solo se publica con la
+  captura abierta, para que el último que llega al soltarla no vuelva a poner `Listening`.
 - Comprobaciones antes de capturar: permiso `RECORD_AUDIO` (si no: `NeedsPermission`), modelo
   instalado (si no: `NeedsModel`, no se graba), `transcriber.acquire()`. Borrar el último modelo con la escucha en
   marcha o en pausa la para igual (`NeedsModel`, se suelta el micro). `NeedsModel` pasa a `Off` en cuanto hay un
@@ -361,6 +366,8 @@ class AppContainer(val app: Application) {
    → escribe PCM16 en `filesDir/pending/<uuid>.pcm` → inserta `PendingAudio` → avisa al hilo 3.
    Tiempos absolutos: `t0Ms` (reloj de pared al arrancar la captura) + `startSample * 1000 / 16000`.
    Tope de cola: 4 h de audio; si se supera, se descartan los trozos nuevos y se registra hueco `BATTERY`.
+   Con menos de 200 MB libres en `filesDir`, igual con hueco `STORAGE`: con el disco lleno la escritura fallaría sin
+   dejar rastro, y el margen deja sitio a SQLite para el hueco.
 3. **ASR** (un único dispatcher de un hilo): bucle `next()` → si `batterySaver` y batería < 20 % sin
    cargar, o estado térmico ≥ `SEVERE`, esperar a `ACTION_POWER_CONNECTED`/mejora (estado visible en
    la notificación). `bumpAttempts` **antes** de decodificar; si `attempts ≥ 3`, borrar el trozo (se
@@ -492,9 +499,11 @@ contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este m
 - `MaintenanceWorker` periódico cada 30 min (`KEEP`): si `listeningEnabled` y el servicio no corre →
   `ResumeNotifier`; `ai.processPending()` si hay red; `ai.buildMissingDigests()`;
   `data.applyRetention()` una vez al día; limpiar ficheros huérfanos de `pending/`.
-- `ResumeNotifier` (B1): notificación en el canal `alerts` "La escucha se ha detenido. Toca para
+- `ResumeNotifier` (B1): notificación en el canal `alerts_high` (importancia alta) "La escucha se ha detenido. Toca para
   reanudar" con `PendingIntent.getForegroundService(START)` (la interacción con la notificación da el
-  permiso "mientras se usa"); acción secundaria abre la app.
+  permiso "mientras se usa"); acción secundaria abre la app. Sale como ventana emergente y suena solo la primera vez de
+  cada interrupción; las siguientes van en silencio. El canal `alerts` de antes (importancia normal, sin ventana
+  emergente) se borra al arrancar: la importancia de un canal ya creado no se puede subir.
 
 ---
 
@@ -649,7 +658,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   (5/15/60 min con confirmación); selector de día (hoy y anteriores); resumen del día si existe;
   línea de tiempo de conversaciones (hora, título o "Transcribiendo…"/"Sin procesar", 2 líneas de
   resumen, chips de tareas, ruido atenuado) intercalando los **huecos** (pausa, micro ocupado,
-  detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir.
+  detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir. Con la escucha activada y
+  los avisos apagados (permiso, notificaciones de la app o categoría «Avisos»), una nota bajo la tarjeta lo dice: si
+  no, una parada fuera de la app pasaría inadvertida hasta abrirla.
 - **Conversación** (B5a): título, franja horaria, duración, resumen, puntos clave, tareas y facts
   derivados (aceptar/descartar), transcripción por segmentos con hora (scroll al segmento citado) y, al
   cambiar de voz y en el citado, quién habla («Tú» en el color primario, «Hablante N» en terciario/secundario);
@@ -671,7 +682,8 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   clave —campo de contraseña, nunca se muestra entera—, **aviso de envío con aceptación**, probar
   conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, que pide confirmar si se acorta, ocultar en capturas,
   exportar JSON con aviso, borrar todo con doble confirmación); Batería (abrir excepción de
-  optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>); Acerca de (versión,
+  optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>, motivo y hora del último cierre de la app
+  mientras escuchaba); Acerca de (versión,
   licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA, ERes2Net de 3D-Speaker Apache-2.0).
 
 Accesibilidad: `contentDescription` en iconos, objetivos ≥ 48 dp, contraste AA, textos escalables.

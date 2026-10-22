@@ -44,6 +44,7 @@ object GapReason {
     const val BATTERY = "BATTERY"
     const val ERROR = "ERROR"
     const val KILLED = "KILLED"
+    const val STORAGE = "STORAGE"
 }
 
 object ChatRole {

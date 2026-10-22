@@ -21,6 +21,7 @@
     <string name="gap_battery">Sin grabar por batería baja</string>
     <string name="gap_error">Error de la escucha</string>
     <string name="gap_killed">Android cerró la app</string>
+    <string name="gap_storage">Sin grabar por falta de espacio</string>
 
     <!-- Estado de una conversación -->
     <string name="conv_state_transcribing">Transcribiendo…</string>
@@ -58,6 +59,7 @@
     <string name="today_status_off_body">Mientras escucha verás una notificación fija. Puedes pausar en un toque.</string>
     <string name="today_status_interrupted">La escucha se ha detenido</string>
     <string name="today_status_interrupted_body">Android la cerró o el móvil se reinició.</string>
+    <string name="today_alerts_off">Los avisos de Mysone están desactivados: si la escucha se detiene, no te enterarás hasta abrir la app. Actívalos en los ajustes de notificaciones del sistema.</string>
     <string name="today_action_listen">Escuchar</string>
     <string name="today_action_resume">Reanudar</string>
     <string name="today_action_stop">Detener</string>
@@ -193,7 +195,7 @@
     <string name="onb_notif_body">Sirven para avisarte de tus recordatorios y de si la escucha se detiene. Solo enseñan el texto de cada recordatorio, nunca la transcripción.</string>
     <string name="onb_notif_grant">Permitir notificaciones</string>
     <string name="onb_notif_granted">Notificaciones permitidas</string>
-    <string name="onb_notif_denied">Sin notificaciones no verás los recordatorios. Puedes activarlas en los ajustes del sistema.</string>
+    <string name="onb_notif_denied">Sin notificaciones no verás los recordatorios ni el aviso de que la escucha se ha detenido. Puedes activarlas en los ajustes del sistema.</string>
 
     <string name="onb_model_title">Modelo de transcripción</string>
     <string name="onb_model_body">La transcripción se hace en tu móvil con un modelo que se descarga una sola vez.</string>

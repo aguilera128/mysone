@@ -78,6 +78,7 @@ internal fun gapLabel(reason: String): String = stringResource(
         GapReason.BATTERY -> R.string.gap_battery
         GapReason.ERROR -> R.string.gap_error
         GapReason.KILLED -> R.string.gap_killed
+        GapReason.STORAGE -> R.string.gap_storage
         else -> R.string.gap_stopped
     },
 )

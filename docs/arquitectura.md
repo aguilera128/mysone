@@ -497,9 +497,12 @@ programan. El procesado completo posterior recibe esas tareas como "ya registrad
    fechas relativas respecto a "ahora") + historial reciente + mensaje con el contexto y la pregunta.
 4. Se guardan pregunta y respuesta en `chat_message`, con `citations` = IDs citados que existan, más las
    conversaciones de los resúmenes diarios del contexto (no llevan `[c:ID]`: lo que salga de ellos no se puede
-   citar). Tareas y datos llevan el `[c:ID]` de su conversación. Borrar u olvidar una conversación borra las
+   citar) y las de los fragmentos enviados (van literales y el modelo puede copiarlos sin citarlos o con la cita de
+   otra). Tareas y datos llevan el `[c:ID]` de su conversación. Borrar u olvidar una conversación borra las
    respuestas cuyo `citations` la incluye y su pregunta; no todas las de su contexto, que con hasta 60 conversaciones
-   del rango (y los 100 datos confirmados, que van siempre) vaciaría el chat casi siempre.
+   del rango (y los 100 datos confirmados, que van siempre) vaciaría el chat casi siempre. Una sola gramática de
+   citas (`Citations`) para guardar y para la pantalla: también `[c:12, 13]` o `[c: 12]`, que se guardan como
+   `[c:12][c:13]`.
 5. Si falla, la pregunta queda guardada para "Reintentar"; al cerrar el aviso o hacer otra pregunta, sale del chat.
    Si se olvida o borra algo mientras llega, la respuesta se descarta y el aviso lo dice.
 Sin IA configurada: la pantalla lo explica y ofrece la búsqueda local.

@@ -92,7 +92,7 @@ class AskEngineTest {
         assertEquals(listOf(LlmMessage("user", "u1\n\nu2")), alternating(msgs))
     }
 
-    @Test fun `lo que no se puede citar son las conversaciones de los resúmenes diarios y los datos llevan su cita`() {
+    @Test fun `cuentan como citadas las de los resúmenes diarios y los fragmentos, y los datos llevan su cita`() {
         fun conv(id: Long) = Conversation(id = id, startedAt = now, endedAt = now, source = ConvSource.MIC, state = ConvState.DONE)
         val ctx = AskContext(
             conversations = listOf(conv(1), conv(2)),
@@ -108,9 +108,24 @@ class AskEngineTest {
             ),
             digestSources = listOf(6, 1),
         )
-        assertEquals(listOf(1L, 6L), ctx.uncitable)
+        assertEquals(listOf(1L, 3L, 6L), ctx.implicitCitations)
         val input = answerInput("¿Cuándo cumple Lucía?", ctx, now, madrid)
         assertTrue("- Lucía cumple el 3 [c:5]\n" in input)
         assertTrue("- dato a mano\n" in input)
+    }
+
+    @Test fun `una respuesta que copia un fragmento sin citarlo se va con su conversación`() {
+        val ctx = AskContext(emptyList(), listOf(Segment(10, 7, now, now, "frase-prueba-7731")), emptyList(), emptyList(), emptyList())
+        // Sin marcador, o con el de otra conversación (la 8).
+        for (raw in listOf("Dijiste «frase-prueba-7731».", "Dijiste «frase-prueba-7731» [c:8].")) {
+            val existing = Citations.parse(raw).toSet()
+            // Lo que guarda AskEngine.ask.
+            val citations = AppJson.encodeToString((existing + ctx.implicitCitations).sorted())
+            val chat = listOf(
+                ChatMessage(1, ChatRole.USER, "¿Qué dije?", createdAt = now),
+                ChatMessage(2, ChatRole.ASSISTANT, raw, citations = citations, createdAt = now),
+            )
+            assertEquals(raw, listOf(2L, 1L), DataManager.chatToForget(chat, setOf(7L)))
+        }
     }
 }

@@ -130,9 +130,9 @@ class AskEngine(private val container: AppContainer) {
             val answer = ChatMessage(
                 role = ChatRole.ASSISTANT,
                 text = text,
-                // Las citadas y las que no se pueden citar: con cualquiera de ellas se borra (§7.5). No todas las del
-                // contexto: casi cualquier conversación reciente está en él y borrarla vaciaría el chat.
-                citations = AppJson.encodeToString((existing + context.uncitable).sorted()),
+                // Las citadas y las de los resúmenes y fragmentos: con cualquiera de ellas se borra (§7.5). No todas las
+                // del contexto: casi cualquier conversación reciente está en él y borrarla vaciaría el chat.
+                citations = AppJson.encodeToString((existing + context.implicitCitations).sorted()),
                 createdAt = System.currentTimeMillis(),
             )
             val saved = container.db.withWriteTransaction {
@@ -250,12 +250,13 @@ internal class AskContext(
     val digestSources: List<Long> = emptyList(),
 ) {
     /**
-     * Conversaciones de las que sale algo de lo enviado sin `[c:ID]` con que citarlas: las de los resúmenes diarios.
-     * Resúmenes, fragmentos, tareas y datos llevan su marcador, y la respuesta cita lo que usa de ellos. Los datos
-     * confirmados van siempre (hasta 100): si contaran todos, borrar una conversación con un dato vaciaría el chat.
+     * Conversaciones que cuentan como citadas aunque la respuesta no las cite: las de los resúmenes diarios, que no
+     * llevan `[c:ID]`, y las de los fragmentos, que van literales y el modelo puede copiar sin citarlos (o con la
+     * cita de otra). Tareas, datos y conversaciones solo cuentan si se citan: los datos confirmados van siempre (hasta
+     * 100) y las conversaciones del rango, hasta 60; si contaran todos, borrar una conversación vaciaría el chat.
      */
-    val uncitable: List<Long>
-        get() = digestSources.distinct().sorted()
+    val implicitCitations: List<Long>
+        get() = (digestSources + segments.map { it.conversationId }).distinct().sorted()
 }
 
 private val WORD = Regex("[\\p{L}\\p{N}]+")

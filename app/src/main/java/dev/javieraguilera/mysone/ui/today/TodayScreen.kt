@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Hearing
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MicOff
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PauseCircle
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.AssistChip
@@ -94,10 +95,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.javieraguilera.mysone.MysoneApp
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.capture.ListeningStatus
@@ -111,11 +114,13 @@ import dev.javieraguilera.mysone.data.GapReason
 import dev.javieraguilera.mysone.data.ListeningGap
 import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
+import dev.javieraguilera.mysone.tasks.ReminderReceiver
 import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.EmptyState
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.onboarding.openAppSettings
 import dev.javieraguilera.mysone.ui.onboarding.rememberPermissionState
+import dev.javieraguilera.mysone.ui.settings.Note
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -137,6 +142,12 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
     val queue by ListeningController.queue.collectAsStateWithLifecycle()
     val pending by vm.pendingChunks.collectAsStateWithLifecycle()
     val listeningEnabled by vm.listeningEnabled.collectAsStateWithLifecycle()
+    // Sin los avisos, una parada fuera de la app pasa inadvertida hasta abrirla: se mira al volver a la pantalla.
+    var alertsOff by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        alertsOff = !ReminderReceiver.canNotify(context, MysoneApp.CHANNEL_ALERTS)
+        onPauseOrDispose { }
+    }
 
     val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
@@ -181,6 +192,9 @@ fun TodayScreen(day: String?, onOpenConversation: (Long, Long?) -> Unit, onOpenS
                 },
                 queue = queue,
             )
+            if (listeningEnabled && alertsOff) {
+                Note(stringResource(R.string.today_alerts_off), icon = Icons.Outlined.NotificationsOff, color = MaterialTheme.colorScheme.error)
+            }
         },
     )
 }
@@ -233,7 +247,7 @@ internal fun TodayContent(
         LazyColumn(contentPadding = inner, modifier = Modifier.fillMaxWidth()) {
             item(key = "days") { DayStrip(selectedDay, onSelectDay, onPickOther = { picking = true }) }
             if (isToday) {
-                item(key = "status") { Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { statusCard() } }
+                item(key = "status") { Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { statusCard() } }
             }
             ui?.digest?.let { digest -> item(key = "digest") { DigestCard(digest) } }
             if (ui != null) {

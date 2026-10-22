@@ -105,12 +105,12 @@ class ReminderReceiver : BroadcastReceiver() {
             return true
         }
 
-        /** Permiso, notificaciones de la app y canal de recordatorios activos. */
-        fun canNotify(context: Context): Boolean {
+        /** Permiso, notificaciones de la app y [channel] (el de recordatorios si no se dice otro) activos. */
+        fun canNotify(context: Context, channel: String = MysoneApp.CHANNEL_REMINDERS): Boolean {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
             val nm = NotificationManagerCompat.from(context)
             return nm.areNotificationsEnabled() &&
-                nm.getNotificationChannel(MysoneApp.CHANNEL_REMINDERS)?.importance != NotificationManager.IMPORTANCE_NONE
+                nm.getNotificationChannel(channel)?.importance != NotificationManager.IMPORTANCE_NONE
         }
 
         fun dismiss(context: Context, taskId: Long) {

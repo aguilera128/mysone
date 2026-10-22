@@ -648,7 +648,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   (5/15/60 min con confirmación); selector de día (hoy y anteriores); resumen del día si existe;
   línea de tiempo de conversaciones (hora, título o "Transcribiendo…"/"Sin procesar", 2 líneas de
   resumen, chips de tareas, ruido atenuado) intercalando los **huecos** (pausa, micro ocupado,
-  detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir.
+  detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir. Con la escucha activada y
+  los avisos apagados (permiso, notificaciones de la app o categoría «Avisos»), una nota bajo la tarjeta lo dice: si
+  no, una parada fuera de la app pasaría inadvertida hasta abrirla.
 - **Conversación** (B5a): título, franja horaria, duración, resumen, puntos clave, tareas y facts
   derivados (aceptar/descartar), transcripción por segmentos con hora (scroll al segmento citado) y, al
   cambiar de voz y en el citado, quién habla («Tú» en el color primario, «Hablante N» en terciario/secundario);

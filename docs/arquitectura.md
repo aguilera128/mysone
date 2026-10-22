@@ -324,7 +324,9 @@ class AppContainer(val app: Application) {
   que siga abierto (la pausa al reanudar, un `KILLED`) pasa a `STOPPED`.
 - **Pausar no llama a `stopForeground()`**: se libera `AudioRecord` (se apaga el indicador del micro)
   y el servicio sigue en primer plano con la notificación "En pausa hasta HH:MM". La reanudación la
-  dispara una alarma exacta (`setExactAndAllowWhileIdle`) con `PendingIntent.getService(RESUME)`.
+  dispara una alarma exacta (`setExactAndAllowWhileIdle`, `ELAPSED_REALTIME_WAKEUP`) con
+  `PendingIntent.getService(PAUSE_END)`, que solo reanuda si `elapsedRealtime` ha llegado al fin: adelantar el reloj
+  del sistema (a mano o con la hora de red) no acorta la pausa.
 - `STOP`: libera todo, `listeningEnabled=false`, hueco `STOPPED`, `stopForeground(REMOVE)` + `stopSelf()`.
 - Notificación (canal `listening`, importancia baja, `setOngoing`, `FOREGROUND_SERVICE_IMMEDIATE`):
   título según estado, texto "N fragmentos hoy · M pendientes". Acciones: escuchando → *Pausar 15 min*,

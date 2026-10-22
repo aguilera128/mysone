@@ -108,7 +108,7 @@ sealed interface SelfTest {
 class SettingsModelsViewModel(private val container: AppContainer) : ViewModel() {
     private val models = container.models
     val catalog = models.catalog
-    val installs = models.installs
+    val installs = models.watchedByUi(models.installs).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), models.installs.value)
     val ramGb = models.deviceRamGb()
     val recommendedId = recommendedModelId(ramGb)
 
@@ -220,7 +220,7 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     // ---- Quién habla (§5.6) ----
 
     val speakerModel = models.speakerModel
-    val speakerInstall = models.speakerInstall
+    val speakerInstall = models.watchedByUi(models.speakerInstall).stateIn(viewModelScope, SharingStarted.WhileSubscribed(), models.speakerInstall.value)
 
     private val _ownerVoice = MutableStateFlow(OwnerVoice.exists(container.app))
     val ownerVoice: StateFlow<Boolean> = _ownerVoice.asStateFlow()

@@ -394,7 +394,9 @@ class AppContainer(val app: Application) {
   Parakeet no parte ninguna (08 §3).
 - Descarga de modelos con `DownloadManager` a `getExternalFilesDir("models-tmp")`, verificación de
   tamaño y SHA-256 (los de `03` §4.2), y movido a `filesDir/models/<id>/`. Opción "solo Wi-Fi" por
-  defecto. URLs de Hugging Face fijadas a commit (03 §4.2).
+  defecto. URLs de Hugging Face fijadas a commit (03 §4.2). Una descarga que espera Wi-Fi o red se consulta cada
+  30 s, y cada segundo solo mientras la bienvenida o Ajustes › Transcripción la enseñan (`watchedByUi`: los
+  colectores de `installs` de `MysoneApp` y la escucha no cuentan).
 - Catálogo v1: `canary-180m-es` (ligero, valor por defecto de `AppSettings`) y `parakeet-v3`
   (`recommendedMinRamGb = PARAKEET_MIN_RAM_GB = 6`). El onboarding y Ajustes › Transcripción marcan
   «Recomendado» el de `recommendedModelId(deviceRamGb())` (salvo que no llegue a su RAM mínima); el onboarding

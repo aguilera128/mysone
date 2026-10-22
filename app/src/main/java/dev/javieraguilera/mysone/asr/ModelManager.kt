@@ -17,6 +17,7 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.ceil
 import kotlinx.coroutines.CoroutineScope
@@ -26,9 +27,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -148,6 +152,13 @@ class ModelManager(private val context: Context) {
         },
     )
     val speakerInstall: StateFlow<ModelInstall> = _speakerInstall.asStateFlow()
+
+    // Pantallas que enseñan el progreso ([watchedByUi]). No vale subscriptionCount: MysoneApp y la escucha recogen
+    // [installs] mientras vive el proceso.
+    private val uiWatchers = AtomicInteger()
+
+    /** [flow] ([installs] o [speakerInstall]) para la pantalla: mientras alguien lo recoge, las descargas en espera se miran cada segundo. */
+    fun <T> watchedByUi(flow: Flow<T>): Flow<T> = flow.onStart { uiWatchers.incrementAndGet() }.onCompletion { uiWatchers.decrementAndGet() }
 
     init {
         all.filter { prefs.contains(it.id) }.forEach(::watch)
@@ -282,7 +293,7 @@ class ModelManager(private val context: Context) {
                             .sumOf { it.sizeBytes } + rows.sumOf { it.bytes }
                         val waiting = downloadWait(rows.map { it.status to it.reason }, prefs.getBoolean(meteredKey(model.id), true), network())
                         setState(model.id, ModelInstall.Downloading((done.toFloat() / model.sizeBytes).coerceIn(0f, 1f), waiting))
-                        delay(pollDelayMs(waiting, observed = _installs.subscriptionCount.value > 0))
+                        delay(pollDelayMs(waiting, observed = uiWatchers.get() > 0))
                     }
                 }
             }

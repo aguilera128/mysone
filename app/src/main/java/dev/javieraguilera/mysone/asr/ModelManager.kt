@@ -180,7 +180,7 @@ class ModelManager(private val context: Context) {
             putString(id, ids.joinToString(","))
             putBoolean(meteredKey(id), allowMetered)
         }
-        _installs.update { it + (id to ModelInstall.Downloading(0f)) }
+        setState(id, ModelInstall.Downloading(0f))
         watch(model)
     }
 

@@ -490,7 +490,7 @@ private fun SettingsModelsContent(
                 checked = wifiOnly,
                 onCheckedChange = actions.setWifiOnly,
                 // Se aplica al encolar: durante una descarga cambiarlo no haría nada.
-                enabled = installs.values.none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
+                enabled = (installs.values + voices.install).none { it is ModelInstall.Downloading || it is ModelInstall.Verifying },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 

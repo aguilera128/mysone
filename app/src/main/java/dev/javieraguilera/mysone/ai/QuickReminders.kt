@@ -56,6 +56,19 @@ class QuickReminders(private val container: AppContainer, private val processor:
         )
 
         fun matches(text: String): Boolean = TRIGGER.containsMatchIn(Normalizer.normalize(text, Normalizer.Form.NFC))
+
+        /**
+         * De varios "recuérdame" de una conversación, los que hay que enviar para que la ventana de alguno los recoja
+         * todos, en orden: el último siempre, y uno anterior solo si queda a más de 3 min (la cola de transcripción
+         * con retraso los suelta de golpe). Cada uno es una llamada de pago con casi el mismo texto.
+         */
+        internal fun covering(triggers: List<Segment>): List<Segment> {
+            val out = mutableListOf<Segment>()
+            for (s in triggers.sortedByDescending { it.startedAt }) {
+                if (out.isEmpty() || s.endedAt < out.last().startedAt - WINDOW_MS) out += s
+            }
+            return out.reversed()
+        }
     }
 }
 

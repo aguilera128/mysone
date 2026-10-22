@@ -34,12 +34,26 @@ class AiProcessing(private val container: AppContainer) {
     // puede ser un resto de un proceso que murió a medias.
     private val mutex = Mutex()
 
+    // "Recuérdame" que esperan el cerrojo, por conversación: los que caben en una ventana van en una sola llamada.
+    private val pendingQuick = mutableMapOf<Long, MutableList<Segment>>()
+
     /** No bloquea; recordatorio rápido si procede. */
     fun onSegmentTranscribed(segment: Segment) {
         if (!QuickReminders.matches(segment.text)) return
+        // Si ya hay uno esperando en esta conversación, lo recoge ese: los saca con el cerrojo cogido, así que lo que
+        // llegue después lanza el suyo y no se pierde ninguno.
+        val first = synchronized(pendingQuick) {
+            val list = pendingQuick.getOrPut(segment.conversationId) { mutableListOf() }
+            list += segment
+            list.size == 1
+        }
+        if (!first) return
         container.appScope.launch {
             try {
-                mutex.withLock { quickReminders.handle(segment) }
+                mutex.withLock {
+                    val triggers = synchronized(pendingQuick) { pendingQuick.remove(segment.conversationId) }.orEmpty()
+                    QuickReminders.covering(triggers).forEach { quickReminders.handle(it) }
+                }
             } catch (e: Exception) {
                 // Sin red o sin respuesta: el procesado completo de la conversación lo recogerá.
                 if (e !is LlmException && e !is CancellationException) Sentry.captureException(e)

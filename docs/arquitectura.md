@@ -576,7 +576,10 @@ Si `quickReminders` y el segmento coincide con
 `\b(recu[eé]rd(a|ame|amelo|ale)|avís(ame|ale)|no (me|te|se) (olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo))\b`
 (sin distinguir mayúsculas): se manda al modelo de segundo plano lo dicho en los últimos 3 min de esa
 conversación con un esquema `{ "tasks": [...] }` (solo `explicitReminder`), se insertan como `OPEN` y se
-programan. El procesado completo posterior recibe esas tareas como "ya registradas".
+programan. El procesado completo posterior recibe esas tareas como "ya registradas". Los disparadores de una
+conversación que esperan el cerrojo se juntan: solo se envía el último y los anteriores que su ventana no recoja (a
+más de 3 min, cuando la cola de transcripción va con retraso), así una tele con varios «recuerda» seguidos es una
+llamada y no una por frase.
 
 ### 7.5 Preguntar (`AskEngine`)
 1. **Planificador** (modelo de segundo plano, effort `low`, esquema): entrada = ahora (fecha, día,

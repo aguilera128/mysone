@@ -37,6 +37,7 @@ private val CREDITS = listOf(
     Credit("Silero VAD", "MIT", "https://github.com/snakers4/silero-vad", R.string.about_silero),
     Credit("NVIDIA Canary 180M Flash", "CC-BY-4.0", "https://huggingface.co/nvidia/canary-180m-flash", R.string.about_nvidia_model),
     Credit("NVIDIA Parakeet TDT 0.6B v3", "CC-BY-4.0", "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3", R.string.about_nvidia_model),
+    Credit("3D-Speaker ERes2Net (VoxCeleb)", "Apache-2.0", "https://github.com/modelscope/3D-Speaker", R.string.about_speaker_model),
 )
 
 private const val CC_BY_URL = "https://creativecommons.org/licenses/by/4.0/deed.es"

@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.ui.settings
 
+import android.media.MediaRecorder
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -63,6 +64,12 @@ import dev.javieraguilera.mysone.asr.CallImporter
 import dev.javieraguilera.mysone.asr.DownloadWait
 import dev.javieraguilera.mysone.asr.ImportProgress
 import dev.javieraguilera.mysone.asr.ModelInstall
+import dev.javieraguilera.mysone.asr.OwnerVoice
+import dev.javieraguilera.mysone.asr.SAMPLE_RATE
+import dev.javieraguilera.mysone.asr.SPEAKER_MODEL_ID
+import dev.javieraguilera.mysone.capture.AudioCapture
+import dev.javieraguilera.mysone.capture.ListeningController
+import dev.javieraguilera.mysone.capture.ListeningStatus
 import dev.javieraguilera.mysone.asr.recommendedModelId
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
@@ -74,6 +81,7 @@ import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import dev.javieraguilera.mysone.ui.today.dayFull
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -202,7 +210,119 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
     fun stopCalls() {
         container.appScope.launch { CallImporter.clearFolder(container.app) }
     }
+
+    // ---- Quién habla (§5.6) ----
+
+    val speakerModel = models.speakerModel
+    val speakerInstall = models.speakerInstall
+
+    private val _ownerVoice = MutableStateFlow(OwnerVoice.exists(container.app))
+    val ownerVoice: StateFlow<Boolean> = _ownerVoice.asStateFlow()
+
+    private val _enroll = MutableStateFlow<Enroll?>(null)
+    val enroll: StateFlow<Enroll?> = _enroll.asStateFlow()
+
+    fun downloadSpeaker(wifiOnly: Boolean) = models.download(SPEAKER_MODEL_ID, allowMetered = !wifiOnly)
+
+    fun cancelSpeaker() = models.cancel(SPEAKER_MODEL_ID)
+
+    fun deleteSpeaker() {
+        viewModelScope.launch { models.delete(SPEAKER_MODEL_ID) }
+    }
+
+    fun deleteOwnerVoice() {
+        container.appScope.launch {
+            OwnerVoice.delete(container.app)
+            _ownerVoice.value = false
+        }
+    }
+
+    private var capture: AudioCapture? = null
+    private val speech = ArrayList<FloatArray>() // lo grabado; lo llena el hilo de la captura
+    private var pausedListening = false
+
+    fun openEnroll() {
+        if (_enroll.value == null) _enroll.value = Enroll.Ready
+    }
+
+    /** Graba hasta juntar [OwnerVoice.ENROLL_SAMPLES] de voz (el VAD quita los silencios) y guarda la huella. */
+    fun startEnroll() {
+        if (_enroll.value !is Enroll.Ready && _enroll.value !is Enroll.Failed) return
+        synchronized(speech) { speech.clear() }
+        // La escucha se pausa mientras: si no, lo leído acabaría también como conversación.
+        pausedListening = ListeningController.status.value is ListeningStatus.Listening
+        if (pausedListening) ListeningController.pause(container.app, ENROLL_PAUSE_MIN)
+        val cap = AudioCapture(
+            container.app,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            onChunk = { chunk ->
+                val got = synchronized(speech) {
+                    speech += chunk.samples
+                    speech.sumOf { it.size }
+                }
+                _enroll.update { (it as? Enroll.Recording)?.copy(progress = (got.toFloat() / OwnerVoice.ENROLL_SAMPLES).coerceAtMost(1f)) ?: it }
+                if (got >= OwnerVoice.ENROLL_SAMPLES) viewModelScope.launch { finishEnroll() }
+            },
+            onLevel = { level -> _enroll.update { (it as? Enroll.Recording)?.copy(level = level) ?: it } },
+            onSilenced = {},
+            onFailure = { viewModelScope.launch { failEnroll(R.string.voice_error_mic) } },
+        )
+        if (!cap.start()) return failEnroll(R.string.voice_error_mic)
+        capture = cap
+        _enroll.value = Enroll.Recording(0f, 0f)
+    }
+
+    fun cancelEnroll() {
+        stopCapture()
+        _enroll.value = null
+    }
+
+    private fun finishEnroll() {
+        if (_enroll.value !is Enroll.Recording) return
+        _enroll.value = Enroll.Saving
+        stopCapture()
+        container.appScope.launch {
+            val ok = OwnerVoice.enroll(container.app, models, synchronized(speech) { speech.toList() })
+            synchronized(speech) { speech.clear() }
+            if (ok) {
+                _ownerVoice.value = true
+                _enroll.value = null
+            } else {
+                _enroll.value = Enroll.Failed(R.string.voice_error_model)
+            }
+        }
+    }
+
+    private fun failEnroll(message: Int) {
+        stopCapture()
+        _enroll.value = Enroll.Failed(message)
+    }
+
+    /** Suelta el micro (espera al hilo de la captura fuera del principal) y devuelve la escucha si se pausó. */
+    private fun stopCapture() {
+        capture?.let { cap -> container.appScope.launch(Dispatchers.IO) { cap.stop() } }
+        capture = null
+        if (pausedListening) {
+            pausedListening = false
+            ListeningController.resume(container.app)
+        }
+    }
+
+    override fun onCleared() {
+        stopCapture()
+    }
 }
+
+/** Registro de la voz del dueño; null = sin diálogo. */
+sealed interface Enroll {
+    data object Ready : Enroll
+    data class Recording(val progress: Float, val level: Float) : Enroll
+    data object Saving : Enroll
+    data class Failed(val message: Int) : Enroll
+}
+
+/** Lo que se pausa la escucha al registrar la voz: de sobra para leer el texto; si se tarda más, vuelve sola. */
+private const val ENROLL_PAUSE_MIN = 2
 
 /** Acciones de la pantalla; con valores vacíos por defecto para las vistas previas. */
 class ModelActions(
@@ -216,7 +336,15 @@ class ModelActions(
     val pickCallFolder: () -> Unit = {},
     val setCallDeleteAfter: (Boolean) -> Unit = {},
     val stopCalls: () -> Unit = {},
+    val downloadSpeaker: (Boolean) -> Unit = {},
+    val cancelSpeaker: () -> Unit = {},
+    val deleteSpeaker: () -> Unit = {},
+    val openEnroll: () -> Unit = {},
+    val deleteOwnerVoice: () -> Unit = {},
 )
+
+/** Modelo de voces y voz del dueño para la pantalla (§5.6). */
+class VoicesState(val model: AsrModel? = null, val install: ModelInstall = ModelInstall.NotInstalled, val ownerVoice: Boolean = false)
 
 /** Carpeta de llamadas para la pantalla; null sin elegir. */
 class CallsState(val folder: String? = null, val deleteAfter: Boolean = true, val readable: Boolean = true)
@@ -235,6 +363,9 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
     val callDeleteAfter by vm.callDeleteAfter.collectAsStateWithLifecycle()
     val callReadable by vm.callFolderReadable.collectAsStateWithLifecycle()
     val pendingFolder by vm.pendingFolder.collectAsStateWithLifecycle()
+    val speakerInstall by vm.speakerInstall.collectAsStateWithLifecycle()
+    val ownerVoice by vm.ownerVoice.collectAsStateWithLifecycle()
+    val enroll by vm.enroll.collectAsStateWithLifecycle()
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::import) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(vm::pickCallFolder) }
     SettingsModelsContent(
@@ -247,6 +378,7 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
         tests = tests,
         imports = imports,
         calls = CallsState(callFolder, callDeleteAfter, callReadable),
+        voices = VoicesState(vm.speakerModel, speakerInstall, ownerVoice),
         onBack = onBack,
         actions = ModelActions(
             download = vm::download,
@@ -259,8 +391,14 @@ fun SettingsModelsScreen(onBack: () -> Unit) {
             pickCallFolder = { pickFolder.launch(CallImporter.SAMSUNG_FOLDER) },
             setCallDeleteAfter = vm::setCallDeleteAfter,
             stopCalls = vm::stopCalls,
+            downloadSpeaker = vm::downloadSpeaker,
+            cancelSpeaker = vm::cancelSpeaker,
+            deleteSpeaker = vm::deleteSpeaker,
+            openEnroll = vm::openEnroll,
+            deleteOwnerVoice = vm::deleteOwnerVoice,
         ),
     )
+    enroll?.let { EnrollDialog(it, onStart = vm::startEnroll, onCancel = vm::cancelEnroll) }
     pendingFolder?.let { (_, count) ->
         AlertDialog(
             onDismissRequest = { vm.confirmCallFolder(null) },
@@ -311,6 +449,7 @@ private fun SettingsModelsContent(
     onBack: () -> Unit,
     actions: ModelActions,
     calls: CallsState = CallsState(),
+    voices: VoicesState = VoicesState(),
 ) {
     var toDelete by rememberSaveable { mutableStateOf<String?>(null) }
     // La importación usa el elegido (MysoneApp elige otro instalado si falta), no uno cualquiera.
@@ -384,11 +523,27 @@ private fun SettingsModelsContent(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 ) { Text(stringResource(R.string.models_calls_stop)) }
             }
+
+            voices.model?.let { m -> VoicesSection(m, voices, wifiOnly, actions, onDelete = { toDelete = m.id }) }
             Spacer(Modifier.height(24.dp))
         }
     }
 
-    toDelete?.let { id ->
+    toDelete?.takeIf { it == voices.model?.id }?.let {
+        val size = Formatter.formatShortFileSize(LocalContext.current, voices.model?.sizeBytes ?: 0)
+        ConfirmDialog(
+            title = stringResource(R.string.models_delete_title, voices.model?.name.orEmpty()),
+            message = stringResource(R.string.voices_delete_message, size),
+            confirmLabel = stringResource(R.string.action_delete),
+            onConfirm = {
+                toDelete = null
+                actions.deleteSpeaker()
+            },
+            onDismiss = { toDelete = null },
+            destructive = true,
+        )
+    }
+    toDelete?.takeIf { it != voices.model?.id }?.let { id ->
         val m = catalog.firstOrNull { it.id == id }
         val context = LocalContext.current
         val size = Formatter.formatShortFileSize(context, m?.sizeBytes ?: 0)
@@ -478,7 +633,7 @@ private fun InstallState(
     onDownload: () -> Unit,
     onDelete: () -> Unit,
     onCancel: () -> Unit,
-    onTest: () -> Unit,
+    onTest: (() -> Unit)?, // null: sin «Probar»
 ) {
     when (install) {
         ModelInstall.NotInstalled -> OutlinedButton(onClick = onDownload) { Text(stringResource(R.string.models_download, size)) }
@@ -496,7 +651,7 @@ private fun InstallState(
         ModelInstall.Installed -> {
             StatusLine(stringResource(R.string.models_installed), ok = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = onTest, enabled = test != SelfTest.Running) { Text(stringResource(R.string.models_test)) }
+                if (onTest != null) OutlinedButton(onClick = onTest, enabled = test != SelfTest.Running) { Text(stringResource(R.string.models_test)) }
                 // Con la prueba en marcha el borrado tendría que esperar a que acabe (ModelManager.delete).
                 val testing = test == SelfTest.Running
                 TextButton(onClick = onDelete, enabled = !testing) {
@@ -574,6 +729,70 @@ private fun ImportRow(p: ImportProgress) {
             }
         }
     }
+}
+
+/** «Quién habla»: el modelo de voces y, con él, la voz del dueño (§5.6). */
+@Composable
+private fun VoicesSection(model: AsrModel, voices: VoicesState, wifiOnly: Boolean, actions: ModelActions, onDelete: () -> Unit) {
+    val size = Formatter.formatShortFileSize(LocalContext.current, model.sizeBytes)
+    SectionHeader(stringResource(R.string.voices_section))
+    Note(stringResource(R.string.voices_desc))
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(model.name, style = MaterialTheme.typography.titleMedium)
+        Text(model.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            stringResource(R.string.models_meta, size, model.license),
+            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        InstallState(voices.install, size, null, { actions.downloadSpeaker(wifiOnly) }, onDelete, actions.cancelSpeaker, onTest = null)
+    }
+    if (voices.install !is ModelInstall.Installed) return
+    if (voices.ownerVoice) {
+        Note(stringResource(R.string.voices_owner_done), icon = Icons.Outlined.CheckCircle, color = MaterialTheme.colorScheme.tertiary)
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = actions.openEnroll) { Text(stringResource(R.string.voices_owner_again)) }
+            TextButton(onClick = actions.deleteOwnerVoice) { Text(stringResource(R.string.voices_owner_delete), color = MaterialTheme.colorScheme.error) }
+        }
+    } else {
+        Note(stringResource(R.string.voices_owner_desc))
+        Button(onClick = actions.openEnroll, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(stringResource(R.string.voices_owner_record))
+        }
+    }
+}
+
+/** Lectura en voz alta para registrar la voz del dueño. */
+@Composable
+private fun EnrollDialog(state: Enroll, onStart: () -> Unit, onCancel: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = {}, // solo con «Cancelar»: tocar fuera a media lectura la tiraría
+        title = { Text(stringResource(R.string.voices_enroll_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.voices_enroll_intro))
+                Text(stringResource(R.string.voices_enroll_text), style = MaterialTheme.typography.bodyLarge)
+                when (state) {
+                    Enroll.Ready -> Unit
+                    is Enroll.Recording -> {
+                        val total = OwnerVoice.ENROLL_SAMPLES / SAMPLE_RATE
+                        Progress(stringResource(R.string.voices_enroll_progress, (state.progress * total).toInt(), total), state.progress)
+                        LinearProgressIndicator(progress = { state.level }, modifier = Modifier.fillMaxWidth().height(4.dp))
+                    }
+                    Enroll.Saving -> Progress(stringResource(R.string.voices_enroll_saving), null)
+                    is Enroll.Failed -> StatusLine(stringResource(state.message), ok = false)
+                }
+            }
+        },
+        confirmButton = {
+            if (state == Enroll.Ready || state is Enroll.Failed) {
+                TextButton(onClick = onStart) { Text(stringResource(if (state is Enroll.Failed) R.string.action_retry else R.string.voices_enroll_start)) }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel, enabled = state != Enroll.Saving) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Preview(showBackground = true, heightDp = 1200)

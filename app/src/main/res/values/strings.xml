@@ -53,4 +53,6 @@
     <string name="model_canary_desc">Ligero: descarga de 207 MB y poca memoria. Fija el idioma al español.</string>
     <string name="model_parakeet_name">Parakeet TDT 0.6B v3</string>
     <string name="model_parakeet_desc">El más preciso y escribe los números en cifras. Multilingüe (25 idiomas). Descarga de 670 MB.</string>
+    <string name="model_speaker_name">ERes2Net (voces)</string>
+    <string name="model_speaker_desc">Distingue las voces de los audios importados. Descarga de 26 MB.</string>
 </resources>

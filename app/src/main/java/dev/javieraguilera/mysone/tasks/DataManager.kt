@@ -9,6 +9,7 @@ import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.ai.DigestBuilder
 import dev.javieraguilera.mysone.asr.AudioImporter
 import dev.javieraguilera.mysone.asr.CallImporter
+import dev.javieraguilera.mysone.asr.OwnerVoice
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.capture.ListeningService
 import dev.javieraguilera.mysone.capture.ResumeNotifier
@@ -180,6 +181,7 @@ class DataManager(private val container: AppContainer) {
         container.settings.update { it.copy(ai = AiSettings(), listeningEnabled = false) }
         ResumeNotifier.cancel(container.app)
         container.secrets.clearApiKey()
+        OwnerVoice.delete(container.app) // la huella de voz del dueño (dato biométrico, §5.6); el modelo de voces se queda
     }
 
     /** Solo la transcripción literal: resúmenes, tareas y facts se quedan (§3, retentionDays). */

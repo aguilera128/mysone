@@ -134,8 +134,9 @@ internal fun StringBuilder.appendRegistered(texts: List<String>) {
 }
 
 /**
- * "[HH:mm:ss] texto" por segmento. Al pasar a otro día que el de [knownDay] (el que ya da el mensaje) o el de la
- * línea anterior, una línea "(día yyyy-MM-dd)": sin ella, lo dicho después de medianoche parecería del día anterior.
+ * "[HH:mm:ss] texto" por segmento, con quién lo dice delante si se sabe ([speakerPrefix]). Al pasar a otro día que el
+ * de [knownDay] (el que ya da el mensaje) o el de la línea anterior, una línea "(día yyyy-MM-dd)": sin ella, lo dicho
+ * después de medianoche parecería del día anterior.
  */
 internal fun StringBuilder.appendTranscript(segments: List<Segment>, zone: ZoneId, knownDay: Long? = segments.firstOrNull()?.startedAt) {
     appendLine("<transcripcion>")
@@ -144,17 +145,26 @@ internal fun StringBuilder.appendTranscript(segments: List<Segment>, zone: ZoneI
         val d = Time.dayKey(it.startedAt, zone)
         if (d != day) appendLine("(día $d)")
         day = d
-        appendLine("[${Time.hourMinuteSecond(it.startedAt, zone)}] ${it.text.trim()}")
+        appendLine("[${Time.hourMinuteSecond(it.startedAt, zone)}] ${speakerPrefix(it.speaker)}${it.text.trim()}")
     }
     append("</transcripcion>")
 }
+
+/** "Tú: " (el dueño) o "Hablante 2: " delante de lo que dice cada uno (§5.6); nada si no se sabe. */
+internal fun speakerPrefix(speaker: Int?): String = when (speaker) {
+    null -> ""
+    0 -> "Tú: "
+    else -> "Hablante $speaker: "
+}
+
+private val SPEAKER_MARK = Regex("""^\s*(Tú|Hablante \d+):\s*""")
 
 /** Trocea por segmentos para que cada parte quede por debajo de [maxChars]. */
 internal fun splitTranscript(segments: List<Segment>, maxChars: Int = MAX_PART_CHARS): List<List<Segment>> {
     val parts = mutableListOf<MutableList<Segment>>()
     var size = 0
     for (s in segments) {
-        val len = s.text.length + 12 // "[HH:mm:ss] " + salto
+        val len = s.text.length + 12 + speakerPrefix(s.speaker).length // "[HH:mm:ss] " + salto
         if (parts.isEmpty() || size + len > maxChars) {
             parts += mutableListOf<Segment>()
             size = 0
@@ -242,7 +252,8 @@ internal fun validTasks(tasks: List<TaskOut>, ref: Long, zone: ZoneId, registere
             state = if (t.explicitReminder) TaskState.OPEN else TaskState.SUGGESTED,
             dueAt = aiDate(t.dueAt, ref, zone),
             remindAt = aiDate(t.remindAt, ref, zone),
-            quote = t.quote.clean(300),
+            // Sin la marca de quién habla: al olvidar, la tarea se queda si su frase sigue en el texto (DataManager).
+            quote = t.quote.replace(SPEAKER_MARK, "").clean(300),
         )
     }
 }

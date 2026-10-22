@@ -80,6 +80,8 @@ data class Segment(
     val startedAt: Long,
     val endedAt: Long,
     val text: String,
+    /** Quién lo dice (§5.6): null = no se sabe, 0 = el dueño («Tú»), n = «Hablante n» dentro de esta conversación. */
+    val speaker: Int? = null,
 )
 
 /** Índice FTS5 de contenido externo: Room crea los triggers que lo sincronizan con `segment`. */

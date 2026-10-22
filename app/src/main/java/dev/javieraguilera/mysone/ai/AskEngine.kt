@@ -335,7 +335,7 @@ internal fun answerInput(question: String, ctx: AskContext, now: Long, zone: Zon
             current = s.conversationId
             appendLine("[c:${s.conversationId}] ${Time.dayLong(s.startedAt, zone)}")
         }
-        appendLine("${Time.hourMinuteSecond(s.startedAt, zone)} ${s.text.trim()}")
+        appendLine("${Time.hourMinuteSecond(s.startedAt, zone)} ${speakerPrefix(s.speaker)}${s.text.trim()}")
     }
     appendLine("</fragmentos>")
     append("<pregunta>$question</pregunta>")

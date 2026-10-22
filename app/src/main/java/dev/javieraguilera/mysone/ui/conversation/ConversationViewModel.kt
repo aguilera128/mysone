@@ -106,12 +106,19 @@ class ConversationViewModel(private val container: AppContainer, private val id:
         container.appScope.launch { container.data.deleteConversation(id) }
     }
 
-    /** Copia la transcripción con sus horas, marcada como sensible para que Android no la muestre en la vista previa. */
+    /** Copia la transcripción con sus horas y quién habla, marcada como sensible para que Android no la muestre en la vista previa. */
     fun copyTranscript() {
         val loaded = state.value as? ConversationState.Loaded ?: return
         val text = buildString {
             loaded.conversation.title?.let { appendLine(it) }
-            loaded.segments.forEach { appendLine("[${Time.hourMinuteSecond(it.startedAt)}] ${it.text}") }
+            loaded.segments.forEach { s ->
+                val who = when (s.speaker) {
+                    null -> ""
+                    0 -> container.app.getString(R.string.conv_speaker_owner) + ": "
+                    else -> container.app.getString(R.string.conv_speaker_n, s.speaker) + ": "
+                }
+                appendLine("[${Time.hourMinuteSecond(s.startedAt)}] $who${s.text}")
+            }
         }.trimEnd()
         val clip = ClipData.newPlainText(container.app.getString(R.string.app_name), text)
         // Antes de Android 13 la constante no existe, pero teclados y portapapeles leen la misma clave literal.

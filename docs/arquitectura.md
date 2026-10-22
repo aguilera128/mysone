@@ -31,10 +31,12 @@ oficial, manda la realidad: corrige y deja nota.
 | Audio guardado | **No.** El audio de voz vive en una cola en disco (PCM16) solo hasta transcribirse; luego se borra | Legal y Bee (06, 01). Conservar audio N días queda para v2 |
 | Monitorización | `sentry-android-core` 8.61.0, init manual solo si hay DSN en la compilación, sin PII ni breadcrumbs con contenido | Regla global + RGPD (04, 06) |
 | Paquete | `dev.javieraguilera.mysone`, nombre visible **Mysone** | — |
+| Quién habla | Solo en lo importado (audios y llamadas): huellas de voz **ERes2Net** (3D-Speaker, VoxCeleb, Apache-2.0, 26 MB) de ventanas de 1,5 s; cada trozo del VAD se parte donde cambia la voz y al final se agrupan las partes. «Tú» si se parece a la voz registrada del dueño. Sin la segmentación pyannote de sherpa-onnx | Es el único extractor de los probados que separa voces en español también con calidad de teléfono; pyannote necesita el audio entero en memoria (§5.6, 09) |
 
-Fuera de v1 (anotado para después): identificación de la voz del dueño (filtro "solo donde hablo
-yo"), conservar audio cifrado N días, embeddings, widget y tile de ajustes rápidos, geovallas,
-bloqueo biométrico, SQLCipher (de momento: cifrado de ficheros del sistema + `allowBackup=false`).
+Fuera de v1 (anotado para después): quién habla en la escucha en directo y el filtro "solo donde hablo
+yo" (en lo importado ya se marca, §5.6), conservar audio cifrado N días, embeddings de texto, widget y tile
+de ajustes rápidos, geovallas, bloqueo biométrico, SQLCipher (de momento: cifrado de ficheros del sistema +
+`allowBackup=false`).
 
 ---
 
@@ -51,7 +53,7 @@ es imposible, se cambia lo mínimo y se avisa en el informe del agente.
 | `core/` | A | `Time.kt` (formatos es-ES, zona, inicio/fin de día), `Json.kt` (instancia `Json` compartida), `AppScope` |
 | `data/` | A | `Entities.kt`, `Daos.kt`, `AppDatabase.kt`, `SettingsStore.kt`, `SecretStore.kt` |
 | `capture/` | B1 | `ListeningService.kt`, `AudioCapture.kt`, `PendingQueue.kt`, `ConversationTracker.kt`, `ListeningNotification.kt`, `ListeningController.kt` (contrato), `ResumeNotifier.kt` |
-| `asr/` | B2 | `VadSegmenter.kt` (contrato), `Transcriber.kt` (contrato), `AsrModels.kt`, `ModelManager.kt` (contrato), `AudioDecoder.kt`, `Resampler.kt`, `AudioImporter.kt` (contrato), `ImportWorker.kt`, `PcmFiles.kt` |
+| `asr/` | B2 | `VadSegmenter.kt` (contrato), `Transcriber.kt` (contrato), `AsrModels.kt`, `ModelManager.kt` (contrato), `AudioDecoder.kt`, `Resampler.kt`, `AudioImporter.kt` (contrato), `ImportWorker.kt`, `PcmFiles.kt`, `CallImporter.kt`, `Speakers.kt` y `OwnerVoice.kt` (quién habla, §5.6) |
 | `ai/` | B3 | `AiPresets.kt` (A lo escribe completo), `LlmClient.kt`, `AnthropicClient.kt`, `OpenAiCompatClient.kt`, `Prompts.kt`, `Schemas.kt`, `AiProcessing.kt` (contrato), `ConversationProcessor.kt`, `QuickReminders.kt`, `AskEngine.kt` (contrato), `DigestBuilder.kt`, `ProcessWorker.kt` |
 | `tasks/` | B4 | `ReminderScheduler.kt` (contrato), `ReminderReceiver.kt`, `SystemEventsReceiver.kt`, `MaintenanceWorker.kt`, `DataManager.kt` (contrato) |
 | `ui/theme/`, `ui/components/`, `ui/nav/` | A | Tema, componentes compartidos mínimos, rutas |
@@ -91,7 +93,8 @@ data class Conversation(
   foreignKeys = [ForeignKey(Conversation::class, ["id"], ["conversationId"], onDelete = CASCADE)],
   indices = [Index("conversationId"), Index("startedAt")])
 data class Segment(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val conversationId: Long, val startedAt: Long, val endedAt: Long, val text: String)
+  val conversationId: Long, val startedAt: Long, val endedAt: Long, val text: String,
+  val speaker: Int? = null)        // §5.6: null = no se sabe, 0 = el dueño («Tú»), n = «Hablante n» de esa conversación
 
 @Fts5(contentEntity = Segment::class, tokenizer/args → "unicode61 remove_diacritics 2")
 @Entity(tableName = "segment_fts") data class SegmentFts(val text: String)
@@ -153,7 +156,10 @@ DAOs (suspend/Flow; lista orientativa, la fase A puede añadir las que vea neces
 `SegmentHit(segmentId, conversationId, startedAt, snippet)`. Sanear la consulta FTS: tokens
 `[\p{L}\p{N}]+`, cada uno como `"token"*`; búsqueda del usuario = AND (espacio), recuperación de la IA = `OR`.
 
-`schemas/` se versiona en git (`room3 { schemaDirectory(...) }`). v1 = `version = 1`, sin migraciones.
+`schemas/` se versiona en git (`room3 { schemaDirectory(...) }`). Versión 2 (22-oct-2026): `segment.speaker`, con
+`@AutoMigration(from = 1, to = 2)`, que solo hace `ALTER TABLE segment ADD COLUMN speaker INTEGER DEFAULT NULL` (el FTS y
+sus triggers no cambian; lo ya guardado queda sin hablante). Cada cambio de esquema = versión nueva, su migración y su
+caso en `MigrationTest` (instrumentado, valida contra `schemas/`).
 
 ### Ajustes (DataStore Preferences, `SettingsStore`)
 
@@ -250,6 +256,10 @@ class ModelManager(context: Context) {
   fun modelDir(id: String): File
   fun deviceRamGb(): Int
   suspend fun selfTest(id: String): Result<String>   // transcribe assets/selftest_es.wav
+  // Modelo de voces (§5.6): mismo download/cancel/delete/isInstalled con SPEAKER_MODEL_ID, pero fuera de catalog/installs
+  val speakerModel: AsrModel
+  val speakerInstall: StateFlow<ModelInstall>
+  internal suspend fun openSpeakerExtractor(): SpeakerEmbeddingExtractor?   // null si no está instalado
 }
 
 // asr/AudioImporter.kt (B2)
@@ -289,7 +299,7 @@ class DataManager(container: AppContainer) {
   suspend fun forgetLast(minutes: Int)            // segmentos, cola pendiente y conversaciones vaciadas
   suspend fun deleteConversation(id: Long)
   suspend fun exportJson(target: Uri)             // todo menos la clave
-  suspend fun deleteAll()                         // BD, cola, chat, ajustes de IA y clave; conserva modelos ASR
+  suspend fun deleteAll()                         // BD, cola, chat, ajustes de IA, clave y voz registrada; conserva los modelos
   suspend fun applyRetention()
 }
 
@@ -396,7 +406,8 @@ SAF (`OpenDocument`, `audio/*`) → `ImportWorker` (`CoroutineWorker` con `setFo
 `dataSync`) → `MediaExtractor` + `MediaCodec` a PCM16 → mono → remuestreo lineal a 16 kHz → VAD
 propio (otra instancia de `VadSegmenter`) → `transcriber.acquire()` → segmentos → conversación
 `source=IMPORT` (`startedAt` = fecha de modificación del fichero − duración, o ahora − duración) →
-`READY` → `ai.onConversationReady`. Sirve también para probar la app en el emulador.
+`READY` → `ai.onConversationReady`. Sirve también para probar la app en el emulador. Con el modelo de voces
+instalado, cada trozo del VAD se parte por voz antes del ASR y los segmentos guardan `speaker` (§5.6).
 
 **Llamadas** (`CallImporter`). Android no deja a ninguna app de la tienda captar el audio de una llamada
 (`VOICE_CALL` exige `CAPTURE_AUDIO_OUTPUT`, de sistema; durante la llamada el micro de las demás llega en
@@ -420,6 +431,47 @@ Al elegir una carpeta con grabaciones sin transcribir se pregunta si entran tamb
 por fecha de modificación, que no se pierde aunque una salga y vuelva de la papelera). «Borrar todo» empieza
 soltando el permiso, parando el vigilante y olvidando la carpeta. Las llamadas de WhatsApp y otras VoIP no las graba el
 teléfono, así que quedan fuera.
+
+### 5.6 Quién habla (`asr/Speakers.kt`, `asr/OwnerVoice.kt`)
+Solo en lo importado (audios elegidos a mano y llamadas). Hace falta el **modelo de voces**
+(`ModelManager.speakerModel`, id `eres2net-voxceleb`): ERes2Net de 3D-Speaker entrenado con VoxCeleb,
+`3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx`, 26 485 263 B, Apache-2.0, SHA-256
+`c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5`, de HF `csukuangfj/speaker-embedding-models` fijado al
+commit `0743f301363dec56491a490f6d6cbc9d67f9a3bf`. Se baja y verifica como los de transcripción, pero va fuera de
+`catalog` e `installs` (su estado en `speakerInstall`): no transcribe, y la escucha y la elección de modelo no deben
+contarlo. Sin él la importación funciona igual, sin hablantes. Por qué este modelo y no otros, y las cifras: `09`.
+
+- **Huellas**: `SpeakerEmbeddingExtractor` de sherpa-onnx (192 valores, normalizados) de ventanas de 1,5 s cada 0,75 s
+  dentro de cada trozo del VAD (con su margen de 1,5 s); la última ventana, pegada al final.
+- **Partir** (al momento, `Diarizer.split`): las ventanas del propio trozo se agrupan (aglomerativo de enlace medio
+  sobre el coseno, umbral `SAME_VOICE_IN_CHUNK = 0,4`). Si sale más de una voz, cada ventana manda hasta la mitad entre
+  su centro y el de la vecina, se unen las partes seguidas de la misma voz, una de menos de 1 s se une a su vecina más
+  larga y cada corte se mueve al tramo de 20 ms más callado a ±0,4 s (suele ser la pausa entre turnos). Cada parte se
+  transcribe sola: no hace falta guardar el audio ni decodificar dos veces. El VAD junta los turnos con pausas de menos
+  de 0,5 s: sin partir, 28 de 41 trozos de las pruebas mezclaban dos voces y solo acertaba el 59 % (09).
+- **Agrupar** (al acabar el fichero, `Diarizer.speakers`): las huellas medias de las partes, pesadas por sus ventanas,
+  con el mismo método y `SAME_VOICE = 0,35`. Cadena de vecinos más cercanos: O(n²) en tiempo y memoria; con más de
+  `MAX_PARTS = 3 000` partes (horas de voz) el audio se queda sin hablantes.
+- **Numerar**: el grupo cuya huella media tiene coseno ≥ `OWNER_VOICE = 0,55` con la voz registrada es «Tú»
+  (`speaker = 0`; también si la voz del dueño sale partida en dos grupos); el resto, `1, 2…` por orden de aparición.
+  Alto a propósito: un «Tú» de más le atribuye al dueño lo que dijo otro. Sin voz registrada no hay 0.
+- **Fallos**: si el modelo no carga o una huella falla, se sigue sin hablantes (null) y el texto se guarda igual.
+- **Voz del dueño** (`OwnerVoice`): Ajustes › Transcripción › Quién habla › «Registrar mi voz». Se lee un texto en voz
+  alta; `AudioCapture` (con su VAD, y en debug `files/debug/mic.pcm`) junta 15 s de voz y la huella es la media de sus
+  ventanas. Si la escucha estaba en marcha se pausa 2 min y se reanuda al acabar (si no, lo leído sería otra
+  conversación). Se guarda en `filesDir/voice/eres2net-voxceleb.owner` (192 floats LE, 768 B); es un dato biométrico:
+  no se exporta, no tiene copia de seguridad y «Borrar todo» la borra. Afecta a lo que se importe después.
+- **Medido** (09; 14 voces reales de MLS-es en 28 conversaciones de 2 y 3 voces): con el hablante correcto el 96 % del
+  tiempo de voz en banda ancha y el 89 % en banda telefónica; «Tú» sale en el 99 % / 94 % de la voz del dueño. Dos
+  voces muy parecidas pueden quedar como un solo hablante. Huellas: 0,1 × tiempo real en el PC con 2 hilos; en el
+  emulador, 52 s de audio pasan de 16 s a 22 s de importación.
+- **Escucha en directo: fuera de v1.** El coste en CPU sería del orden del propio ASR (las huellas solapadas cuestan
+  ~0,1 × tiempo real; Parakeet 0,13 y Canary 0,20), así que la escucha gastaría hasta casi el doble. Y el diseño no
+  encaja tal cual: una conversación en directo dura horas, se transcribe trozo a trozo desde una cola en disco que
+  sobrevive a la muerte del proceso, y agrupar al cerrarla pediría guardar la huella de cada segmento (otra migración)
+  y decidir qué hacer con la tele y con decenas de voces. Tampoco está medida la calidad con el micro lejano o en el
+  bolsillo. Siguiente paso razonable: solo «Tú» en directo (comparar cada trozo con la voz registrada, sin agrupar,
+  ventanas sin solapar), medido antes en el móvil real.
 
 ---
 
@@ -486,7 +538,9 @@ lleva `provider.require_parameters` (solo endpoints que cumplen `response_format
 ### 7.3 Procesado de conversación (`ConversationProcessor`)
 - Entrada al modelo (mensaje de usuario, variable): fecha y hora de inicio con día de la semana
   (`jueves 15 de octubre de 2026, 18:42`), zona, duración, tareas ya registradas de esa conversación
-  (para no duplicar) y la transcripción `[HH:mm:ss] texto` por segmento. Si la transcripción supera
+  (para no duplicar) y la transcripción `[HH:mm:ss] texto` por segmento, con `Tú: ` o `Hablante N: ` delante si
+  se sabe quién habla (`speakerPrefix`, §5.6; prompts `procesar v3`, `recordatorio v2` y `responder v2` lo explican, y
+  la `quote` de una tarea se guarda sin esa marca para que «olvidar» la siga encontrando). Si la transcripción supera
   ~60 000 caracteres, se trocea por segmentos y se procesa por partes, fusionando resultados.
 - `system` **constante y versionado** (sin fechas ni IDs; ≥ 512 tokens para que cachee): rol, reglas,
   descripción del esquema, criterios de tareas/facts/ruido y 1–2 ejemplos breves.
@@ -527,7 +581,7 @@ programan. El procesado completo posterior recibe esas tareas como "ya registrad
    (keywords con sinónimos y variantes; rango null = últimos 30 días).
 2. **Recuperación** (BD local): conversaciones del rango (título + resumen + hora, máx. 60, más
    recientes primero; si se pasa, las que casan por FTS), segmentos por FTS5 `OR` de keywords en el
-   rango ordenados por `bm25` (máx. 40, con el segmento anterior y posterior), resúmenes diarios del
+   rango ordenados por `bm25` (máx. 40, con el segmento anterior y posterior; cada uno con quién habla si se sabe), resúmenes diarios del
    rango (máx. 14), tareas abiertas (máx. 30) y facts confirmados (máx. 100).
 3. **Respuesta** (modelo de respuestas, effort `medium`, texto libre): `system` constante (responder
    solo con el contexto; si no está, decirlo; español; breve; citar con `[c:ID]` tras cada afirmación;
@@ -587,8 +641,9 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
   resumen, chips de tareas, ruido atenuado) intercalando los **huecos** (pausa, micro ocupado,
   detenida, app cerrada por el sistema) con su motivo; contador de pendientes de transcribir.
 - **Conversación** (B5a): título, franja horaria, duración, resumen, puntos clave, tareas y facts
-  derivados (aceptar/descartar), transcripción por segmentos con hora (scroll al segmento citado);
-  acciones: reprocesar, copiar transcripción, borrar (confirmación).
+  derivados (aceptar/descartar), transcripción por segmentos con hora (scroll al segmento citado) y, al
+  cambiar de voz y en el citado, quién habla («Tú» en el color primario, «Hablante N» en terciario/secundario);
+  acciones: reprocesar, copiar transcripción (con quién habla), borrar (confirmación).
 - **Buscar** (B5a): campo con búsqueda al escribir (debounce 300 ms), resultados con fragmento
   resaltado («») y fecha, agrupados por día; tocar abre la conversación en el segmento.
 - **Preguntar** (B5b): chat; sugerencias iniciales ("¿Qué tengo pendiente?", "¿Qué hablé ayer?",
@@ -601,12 +656,13 @@ ajustes. Rutas Nav3 (A las declara con pantallas placeholder): `Onboarding`, `To
 - **Memoria** (B5b): facts confirmados y sugeridos (confirmar, editar, borrar), añadir a mano.
 - **Ajustes** (B5b): Escucha (fuente de audio, minutos de silencio que cierran conversación,
   ahorro de batería, recordatorio rápido); Transcripción (`SettingsModels`: catálogo, estado,
-  descargar/cancelar/borrar, probar, elegir; importar audio); IA (`SettingsAi`: preset, URL, modelos,
+  descargar/cancelar/borrar, probar, elegir; importar audio; llamadas; quién habla: modelo de voces y
+  registrar/borrar tu voz); IA (`SettingsAi`: preset, URL, modelos,
   clave —campo de contraseña, nunca se muestra entera—, **aviso de envío con aceptación**, probar
   conexión, coste estimado); Privacidad (`SettingsPrivacy`: retención, ocultar en capturas,
   exportar JSON con aviso, borrar todo con doble confirmación); Batería (abrir excepción de
   optimización, guía por fabricante con enlace a dontkillmyapp.com/<marca>); Acerca de (versión,
-  licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA).
+  licencias: sherpa-onnx Apache-2.0, Silero MIT, Canary/Parakeet CC-BY-4.0 de NVIDIA, ERes2Net de 3D-Speaker Apache-2.0).
 
 Accesibilidad: `contentDescription` en iconos, objetivos ≥ 48 dp, contraste AA, textos escalables.
 `FLAG_SECURE` en `MainActivity` según ajuste.
@@ -644,7 +700,9 @@ Aviso inicial aceptado con fecha · notificación siempre visible · pausa en un
 qué se envía y a quién · DeepSeek marcado como desaconsejado · sin contenido en logs, Sentry ni
 notificaciones (salvo el texto de la propia tarea en el recordatorio) · retención de la transcripción
 literal (90 días por defecto) · borrado en cascada y borrado total · exportación con aviso ·
-`allowBackup=false` · `FLAG_SECURE` por defecto · nada de facts sensibles (salud, ideología, etc.).
+`allowBackup=false` · `FLAG_SECURE` por defecto · nada de facts sensibles (salud, ideología, etc.) · quién habla
+se calcula en el móvil y sin guardar audio (solo vectores mientras dura la importación) · la voz registrada del dueño
+(dato biométrico) vive solo en `filesDir`, no se exporta y «Borrar todo» la borra.
 
 ---
 
@@ -652,10 +710,16 @@ literal (90 días por defecto) · borrado en cascada y borrado total · exportac
 - **Unitarias JVM** (cada módulo las suyas, sin Android): `ConversationTracker`, sanitizado FTS,
   parseo/validación de salidas de IA y fechas, construcción de peticiones (forma JSON exacta, con
   `mockwebserver3`), parser de citas `[c:ID]`, remuestreo, troceo de VAD a 25 s, regex de
-  recordatorio rápido, cálculo de alarmas.
-- **Instrumentadas** (emulador): DAOs y FTS5 con `BundledSQLiteDriver` en memoria.
+  recordatorio rápido, cálculo de alarmas, quién habla (`SpeakersTest`: ventanas, partir por voz, corte en el
+  silencio, números con y sin dueño, y la cadena de vecinos frente al aglomerativo directo en 200 casos al azar).
+- **Instrumentadas** (emulador): DAOs y FTS5 con `BundledSQLiteDriver` en memoria; migraciones (`MigrationTest`).
+  Con el móvil personal conectado, nada de `connectedDebugAndroidTest`: `assembleDebugAndroidTest` y
+  `adb -s emulator-5554 shell am instrument -w dev.javieraguilera.mysone.test/androidx.test.runner.AndroidJUnitRunner`.
 - **E2E en emulador** (`Pixel_7_Pro_API_34` y `10.1_WXGA_Tablet_API_36`): onboarding, descarga de
   Canary, importar `conv1.wav`/`conv2.wav` (TTS en español), transcripción correcta, procesado con el
   servidor falso (`node tools/mock-llm.mjs`, puerto 8787, en el emulador `http://10.0.2.2:8787`, clave
   `test-key`), tarea + recordatorio que suena, pregunta con citas, búsqueda, pausa/reanudar, matar el
-  proceso (`adb shell am kill` / `kill -9`) y reinicio del emulador → "Toca para reanudar".
+  proceso (`adb shell am kill` / `kill -9`) y reinicio del emulador → "Toca para reanudar". Quién habla: actualizar
+  encima de la versión de esquema 1 con una conversación importada (migración), bajar el modelo de voces, registrar la
+  voz con `mic.pcm` de una voz MLS-es e importar una conversación de dos voces reales en WAV y como llamada AAC de banda
+  telefónica en `Recordings/Call` (09 §6).

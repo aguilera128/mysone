@@ -72,6 +72,39 @@ class OpenAiCompatClientTest {
         assertEquals(AppJson.parseToJsonElement("""{"type":"disabled"}"""), obj["thinking"])
     }
 
+    @Test fun `OpenRouter solo enruta a proveedores que cumplen el esquema y no entrenan con los datos`() {
+        val obj = openAiBody(req, 1024, JsonMode.SCHEMA, deepSeek = false, openRouter = true)
+        assertEquals(AppJson.parseToJsonElement("""{"require_parameters":true,"data_collection":"deny"}"""), obj["provider"])
+        assertFalse("provider" in openAiBody(req, 1024, JsonMode.SCHEMA, deepSeek = false))
+        assertEquals(true, OpenRouterModels.isOpenRouter("https://openrouter.ai/api/v1"))
+        assertEquals(false, OpenRouterModels.isOpenRouter("https://openrouter.ai.ejemplo.com/v1"))
+        assertEquals(true, OpenRouterModels.isOpenRouter(" https://OpenRouter.ai/api/v1"))
+    }
+
+    @Test fun `OpenRouter - moderación es de la conversación y sin saldo espera sin gastar intentos`() {
+        val moderated = httpError(HttpReply(403, """{"error":{"code":403,"message":"flagged","metadata":{"reasons":["x"],"flagged_input":"texto"}}}""", null))
+        assertEquals(LlmErrorKind.REFUSAL, moderated.kind)
+        assertFalse(moderated.message!!.contains("texto"))
+        assertEquals(LlmErrorKind.AUTH, httpError(HttpReply(403, """{"error":{"code":403,"message":"key"}}""", null)).kind)
+        val credits = httpError(HttpReply(402, """{"error":{"code":402,"message":"Insufficient credits"}}""", null))
+        assertEquals(LlmErrorKind.RATE, credits.kind)
+    }
+
+    @Test fun `catálogo de OpenRouter sin batch, del más nuevo al más antiguo y con precio por millón`() {
+        val body = """{"data":[
+            {"id":"a/viejo","name":"Viejo","created":1000,"pricing":{"prompt":"0.0000001","completion":"0.0000005"},"context_length":8192},
+            {"id":"a/nuevo","name":"Nuevo","created":2000,"pricing":{"prompt":"0","completion":"0"},"context_length":1000000},
+            {"id":"a/nuevo:batch","name":"Nuevo (batch)","created":2000,"pricing":{"prompt":"0","completion":"0"}},
+            {"name":"sin id"}
+        ]}"""
+        val models = parseOpenRouterModels(body)
+        assertEquals(listOf("a/nuevo", "a/viejo"), models.map { it.id })
+        assertEquals(2_000_000L, models[0].createdAt)
+        assertEquals(0.1, models[1].promptPerM!!, 1e-9)
+        assertEquals(0.5, models[1].completionPerM!!, 1e-9)
+        assertEquals(1_000_000, models[0].contextLength)
+    }
+
     @Test fun `length reintenta con el doble`() = runTest {
         server.enqueue(completion("{\"keyw", finish = "length"))
         server.enqueue(completion("{}"))

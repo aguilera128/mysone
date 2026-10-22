@@ -121,13 +121,23 @@ internal suspend fun OkHttpClient.postJson(url: String, headers: Map<String, Str
         }
     }
 
-/** Error HTTP → [LlmException]. Del cuerpo solo se toma `error.type`, que no lleva contenido. */
+/**
+ * Error HTTP → [LlmException]. Del cuerpo solo se toma `error.type` y si hay `error.metadata.reasons`, que no llevan
+ * contenido (`flagged_input`, que sí, ni se lee).
+ */
 internal fun httpError(reply: HttpReply): LlmException {
-    val type = runCatching { (AppJson.parseToJsonElement(reply.body) as? JsonObject)?.get("error").obj().str("type") }
-        .getOrNull()?.takeIf { it.matches(Regex("[a-z_]{1,40}")) }
+    val error = runCatching { (AppJson.parseToJsonElement(reply.body) as? JsonObject)?.get("error").obj() }.getOrNull()
+    val type = error.str("type")?.takeIf { it.matches(Regex("[a-z_]{1,40}")) }
     val msg = "HTTP ${reply.code}" + (type?.let { " ($it)" } ?: "")
     val retryAfter = reply.retryAfter?.toDoubleOrNull()?.let { (it * 1000).toLong() }
+    // OpenRouter: la moderación del modelo ha marcado esta entrada. Es de la conversación, no de la clave:
+    // cuenta como intento suyo y la cola sigue (como AUTH pararía todo, y culparía a la clave).
+    if (reply.code == 403 && error?.get("metadata").obj()?.containsKey("reasons") == true) {
+        return LlmException(LlmErrorKind.REFUSAL, "$msg moderation")
+    }
     return when (reply.code) {
+        // Sin saldo (OpenRouter, DeepSeek): como un límite de uso, se espera sin gastar intentos de las conversaciones.
+        402 -> LlmException(LlmErrorKind.RATE, msg, retryAfter)
         401, 403 -> LlmException(LlmErrorKind.AUTH, msg)
         408 -> LlmException(LlmErrorKind.NETWORK, msg)
         429 -> LlmException(LlmErrorKind.RATE, msg, retryAfter)

@@ -474,8 +474,14 @@ interface LlmClient { suspend fun complete(req: LlmRequest): LlmResponse } // la
 |---|---|---|---|---|---|---|---|
 | `anthropic` | Claude (Anthropic) | ANTHROPIC | `https://api.anthropic.com` | `claude-haiku-5-5` | `claude-opus-5-5` | schema | EE. UU.; no entrena con tus datos; retención ≤ 30 días |
 | `mistral` | Mistral (UE) | OPENAI_COMPAT | `https://api.mistral.ai/v1` | `mistral-small-latest` | `mistral-medium-latest` | schema | Empresa de la UE; revisa la opción de no entrenar |
+| `openrouter` | OpenRouter (cualquier modelo) | OPENAI_COMPAT | `https://openrouter.ai/api/v1` | `anthropic/claude-haiku-5.5` | `anthropic/claude-opus-5.5` | schema | Intermediario de EE. UU. que reenvía al proveedor del modelo; se pide `provider: {require_parameters, data_collection: "deny"}` |
 | `deepseek` | DeepSeek | OPENAI_COMPAT | `https://api.deepseek.com` | `deepseek-flash` | `deepseek-flash` | object | **Datos en China, puede entrenar con ellos; desaconsejado con conversaciones de terceros (RGPD)** |
 | `custom` | Personalizado (compatible con OpenAI) | OPENAI_COMPAT | (editable) | (editable) | (editable) | object | — |
+
+OpenRouter: los modelos se eligen de su catálogo vivo (`GET /api/v1/models?supported_parameters=structured_outputs&sort=newest`,
+público, sin clave; `OpenRouterModels`), así los que van saliendo aparecen solos, con precio por millón de tokens
+y marca «Nuevo» (menos de 30 días). Se quitan las entradas `:batch` (solo valen para la Batch API). Cada petición
+lleva `provider.require_parameters` (solo endpoints que cumplen `response_format`) y `data_collection: "deny"`.
 
 ### 7.3 Procesado de conversación (`ConversationProcessor`)
 - Entrada al modelo (mensaje de usuario, variable): fecha y hora de inicio con día de la semana

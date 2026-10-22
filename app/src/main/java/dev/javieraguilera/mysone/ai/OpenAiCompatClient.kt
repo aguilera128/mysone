@@ -11,7 +11,7 @@ import kotlinx.serialization.json.putJsonObject
 import okhttp3.OkHttpClient
 
 /**
- * `POST {baseUrl}/chat/completions` compatible con OpenAI: Mistral, DeepSeek y "Personalizado"
+ * `POST {baseUrl}/chat/completions` compatible con OpenAI: Mistral, OpenRouter, DeepSeek y "Personalizado"
  * (docs/investigacion/05 §6.2). Con [JsonMode.OBJECT] el prompt ya describe el JSON y lleva la palabra JSON.
  */
 class OpenAiCompatClient(
@@ -24,6 +24,7 @@ class OpenAiCompatClient(
 
     // DeepSeek piensa por defecto; para estas tareas se apaga (05 §2.2).
     private val deepSeek = "deepseek.com" in baseUrl
+    private val openRouter = OpenRouterModels.isOpenRouter(baseUrl)
 
     /** `finish_reason: length` → un reintento con el doble. */
     override suspend fun complete(req: LlmRequest): LlmResponse =
@@ -31,7 +32,7 @@ class OpenAiCompatClient(
             ?: throw LlmException(LlmErrorKind.BAD_OUTPUT, "length", truncated = true)
 
     private suspend fun send(req: LlmRequest, maxTokens: Int): LlmResponse? = withRetries {
-        val reply = http.postJson(url, mapOf("Authorization" to "Bearer $apiKey"), openAiBody(req, maxTokens, jsonMode, deepSeek))
+        val reply = http.postJson(url, mapOf("Authorization" to "Bearer $apiKey"), openAiBody(req, maxTokens, jsonMode, deepSeek, openRouter))
         if (reply.code != 200) throw httpError(reply)
         parseOpenAi(reply.body)
     }
@@ -39,7 +40,7 @@ class OpenAiCompatClient(
 
 // ponytail: `max_tokens` vale para Mistral, DeepSeek, Groq y OpenRouter; los modelos de razonamiento de
 // OpenAI piden `max_completion_tokens`. Añadirlo si alguien usa OpenAI con el preset personalizado.
-internal fun openAiBody(req: LlmRequest, maxTokens: Int, jsonMode: String, deepSeek: Boolean): JsonObject = buildJsonObject {
+internal fun openAiBody(req: LlmRequest, maxTokens: Int, jsonMode: String, deepSeek: Boolean, openRouter: Boolean = false): JsonObject = buildJsonObject {
     put("model", req.model)
     put("max_tokens", maxTokens)
     putJsonArray("messages") {
@@ -57,6 +58,8 @@ internal fun openAiBody(req: LlmRequest, maxTokens: Int, jsonMode: String, deepS
         }
     }
     if (deepSeek) putJsonObject("thinking") { put("type", "disabled") }
+    // OpenRouter reparte entre proveedores: solo los que cumplen el esquema JSON y no guardan datos para entrenar.
+    if (openRouter) putJsonObject("provider") { put("require_parameters", true); put("data_collection", "deny") }
 }
 
 /** null = cortada (`finish_reason: length`). Contenido vacío → BAD_OUTPUT (DeepSeek a veces lo devuelve así). */

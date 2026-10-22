@@ -147,6 +147,17 @@
     <string name="settings_ai_model_background_help">Títulos, resúmenes y tareas en segundo plano. Mejor uno pequeño y barato.</string>
     <string name="settings_ai_model_answer">Modelo para las respuestas</string>
     <string name="settings_ai_model_answer_help">Lo que preguntas en Preguntar.</string>
+    <string name="settings_ai_model_pick">Elegir de la lista</string>
+    <string name="settings_ai_models_title">Modelos de OpenRouter</string>
+    <string name="settings_ai_models_note">Los más nuevos primero. Solo los que pueden devolver el JSON que pide Mysone.</string>
+    <string name="settings_ai_models_search">Buscar modelo</string>
+    <string name="settings_ai_models_loading">Cargando la lista de modelos…</string>
+    <string name="settings_ai_models_error">No se ha podido cargar la lista de modelos. Comprueba la conexión.</string>
+    <string name="settings_ai_models_retry">Reintentar</string>
+    <string name="settings_ai_models_empty">Ningún modelo coincide.</string>
+    <string name="settings_ai_models_price">%1$s $ entrada · %2$s $ salida por M tokens</string>
+    <string name="settings_ai_models_free">Gratis (con límites de uso)</string>
+    <string name="settings_ai_models_new">Nuevo</string>
     <string name="settings_ai_save_connection">Guardar</string>
     <string name="settings_ai_test">Probar conexión</string>
     <string name="settings_ai_testing">Probando…</string>
@@ -154,6 +165,7 @@
     <string name="settings_ai_section_cost">Coste estimado</string>
     <string name="settings_ai_cost_anthropic">Con 3 h de voz al día, el procesado con Haiku 5.5 cuesta alrededor de 1 $ al mes, y cada pregunta respondida con Opus 5.5, entre 0,5 y 1,5 céntimos.</string>
     <string name="settings_ai_cost_mistral">Con 3 h de voz al día, entre 1,5 $ al mes (todo con Small) y 7,5 $ (con Medium para las respuestas).</string>
+    <string name="settings_ai_cost_openrouter">Depende del modelo: en «Elegir de la lista» verás lo que cuesta cada uno por millón de tokens de entrada y de salida.</string>
     <string name="settings_ai_cost_deepseek">Con 3 h de voz al día, unos 1,5–2 $ al mes.</string>
     <string name="settings_ai_cost_custom">Depende del proveedor y de los modelos. Como referencia, un modelo pequeño sale a 1–2 $ al mes con 3 h de voz al día.</string>
     <string name="settings_ai_cost_opus">Con Opus también en segundo plano, el coste sube a unos 35–45 $ al mes.</string>
@@ -202,18 +214,6 @@
     <string name="models_import_duplicate_title">Ya importaste este audio</string>
     <string name="models_import_duplicate_message">Hay una conversación importada de un audio con la misma fecha de modificación y la misma duración. %1$s Si lo importas otra vez, la tendrás repetida.</string>
     <string name="models_import_duplicate_confirm">Importar otra vez</string>
-
-    <!-- Ajustes › Privacidad -->
-    <string name="privacy_section_retention">Conservar la transcripción</string>
-    <string name="privacy_retention_desc">Cuánto tiempo se guarda el texto literal de lo que se oye. Los resúmenes, tareas y recuerdos se conservan.</string>
-    <string name="privacy_retention_days">%1$d días</string>
-    <string name="privacy_retention_never">No borrar nunca</string>
-    <string name="privacy_retention_default">Recomendado</string>
-    <string name="privacy_retention_note">El borrado se hace una vez al día.</string>
-    <string name="privacy_secure_screen">Ocultar en capturas</string>
-    <string name="privacy_secure_screen_desc">Impide capturas y grabaciones de pantalla, y oculta el contenido en la vista de apps recientes.</string>
-    <string name="privacy_section_export">Exportar</string>
-    <string name="privacy_export_desc">Guarda en un archivo JSON tus conversaciones, transcripciones, tareas, recuerdos, chat y ajustes. No incluye la clave de la IA.</string>
     <string name="models_section_calls">Llamadas</string>
     <string name="models_calls_desc">Android no deja a ninguna app grabar las llamadas, pero la grabadora de tu teléfono sí (en Samsung: Teléfono › Ajustes › Grabar llamadas). Elige la carpeta donde las guarda y Mysone transcribirá cada llamada al terminar, en el móvil.</string>
     <string name="models_calls_pick">Elegir carpeta de grabaciones</string>
@@ -233,6 +233,18 @@
     </plurals>
     <string name="models_calls_existing_all">Transcribir también</string>
     <string name="models_calls_existing_new">Solo las nuevas</string>
+
+    <!-- Ajustes › Privacidad -->
+    <string name="privacy_section_retention">Conservar la transcripción</string>
+    <string name="privacy_retention_desc">Cuánto tiempo se guarda el texto literal de lo que se oye. Los resúmenes, tareas y recuerdos se conservan.</string>
+    <string name="privacy_retention_days">%1$d días</string>
+    <string name="privacy_retention_never">No borrar nunca</string>
+    <string name="privacy_retention_default">Recomendado</string>
+    <string name="privacy_retention_note">El borrado se hace una vez al día.</string>
+    <string name="privacy_secure_screen">Ocultar en capturas</string>
+    <string name="privacy_secure_screen_desc">Impide capturas y grabaciones de pantalla, y oculta el contenido en la vista de apps recientes.</string>
+    <string name="privacy_section_export">Exportar</string>
+    <string name="privacy_export_desc">Guarda en un archivo JSON tus conversaciones, transcripciones, tareas, recuerdos, chat y ajustes. No incluye la clave de la IA.</string>
     <string name="privacy_export">Exportar datos</string>
     <string name="privacy_export_title">Antes de exportar</string>
     <string name="privacy_export_warning">El archivo contiene las palabras de otras personas. Compartirlo fuera de tu uso personal puede vulnerar su intimidad o su protección de datos. Guárdalo en un lugar seguro y no lo difundas.</string>

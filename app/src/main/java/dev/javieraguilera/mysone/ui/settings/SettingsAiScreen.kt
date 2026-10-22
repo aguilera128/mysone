@@ -1,11 +1,13 @@
 package dev.javieraguilera.mysone.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +17,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -42,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +74,9 @@ import dev.javieraguilera.mysone.AppContainer
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.ai.AiPreset
 import dev.javieraguilera.mysone.ai.AiPresets
+import dev.javieraguilera.mysone.ai.LlmException
+import dev.javieraguilera.mysone.ai.OpenRouterModel
+import dev.javieraguilera.mysone.ai.OpenRouterModels
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
 import dev.javieraguilera.mysone.data.AiSettings
@@ -80,6 +88,7 @@ import dev.javieraguilera.mysone.ui.components.ConfirmDialog
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 import java.net.URI
+import java.text.NumberFormat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -93,6 +102,14 @@ sealed interface ConnectionTest {
     data object Running : ConnectionTest
     data class Ok(val reply: String) : ConnectionTest
     data class Failed(val error: AiError) : ConnectionTest
+}
+
+/** Catálogo de OpenRouter para elegir modelo; se pide al abrir la lista. */
+sealed interface ModelCatalog {
+    data object Idle : ModelCatalog
+    data object Loading : ModelCatalog
+    data class Loaded(val models: List<OpenRouterModel>) : ModelCatalog
+    data object Failed : ModelCatalog
 }
 
 class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
@@ -148,6 +165,22 @@ class SettingsAiViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    private val _catalog = MutableStateFlow<ModelCatalog>(ModelCatalog.Idle)
+    val catalog: StateFlow<ModelCatalog> = _catalog.asStateFlow()
+
+    /** Una vez por pantalla: la lista cambia poco en unos minutos y ocupa casi 1 MB. */
+    fun loadModels() {
+        if (_catalog.value == ModelCatalog.Loading || _catalog.value is ModelCatalog.Loaded) return
+        _catalog.value = ModelCatalog.Loading
+        viewModelScope.launch {
+            _catalog.value = try {
+                ModelCatalog.Loaded(OpenRouterModels.fetch())
+            } catch (_: LlmException) {
+                ModelCatalog.Failed
+            }
+        }
+    }
+
     /** Con otra URL, modelo o el aviso aceptado, lo que falló por los ajustes anteriores se vuelve a intentar. */
     private fun updateAi(transform: (AiSettings) -> AiSettings) {
         viewModelScope.launch {
@@ -192,6 +225,7 @@ fun SettingsAiScreen(onBack: () -> Unit) {
     val vm = viewModel { SettingsAiViewModel(container) }
     val hasKey by vm.hasKey.collectAsStateWithLifecycle()
     val test by vm.test.collectAsStateWithLifecycle()
+    val catalog by vm.catalog.collectAsStateWithLifecycle()
     val ai = vm.ai.collectAsStateWithLifecycle().value ?: return
     SettingsAiContent(
         ai = ai,
@@ -205,6 +239,8 @@ fun SettingsAiScreen(onBack: () -> Unit) {
         onAccept = vm::accept,
         onSetEnabled = vm::setEnabled,
         onTest = vm::testConnection,
+        catalog = catalog,
+        onLoadModels = vm::loadModels,
     )
 }
 
@@ -221,6 +257,8 @@ private fun SettingsAiContent(
     onAccept: () -> Unit,
     onSetEnabled: (Boolean) -> Unit,
     onTest: () -> Unit,
+    catalog: ModelCatalog = ModelCatalog.Idle,
+    onLoadModels: () -> Unit = {},
 ) {
     val preset = AiPresets.byId(ai.presetId)
     val provider = providerName(ai)
@@ -278,7 +316,7 @@ private fun SettingsAiContent(
             KeyField(hasKey, onSaveKey, onClearKey)
 
             SectionHeader(stringResource(R.string.settings_ai_section_connection))
-            ConnectionFields(ai, hasKey, test, onSaveConnection, onTest)
+            ConnectionFields(ai, hasKey, test, onSaveConnection, onTest, catalog, onLoadModels)
 
             SectionHeader(stringResource(R.string.settings_ai_section_cost))
             Note(
@@ -286,6 +324,7 @@ private fun SettingsAiContent(
                     when (ai.presetId) {
                         "anthropic" -> R.string.settings_ai_cost_anthropic
                         "mistral" -> R.string.settings_ai_cost_mistral
+                        "openrouter" -> R.string.settings_ai_cost_openrouter
                         "deepseek" -> R.string.settings_ai_cost_deepseek
                         else -> R.string.settings_ai_cost_custom
                     },
@@ -390,10 +429,19 @@ private fun ConnectionFields(
     test: ConnectionTest,
     onSave: (String, String, String) -> Unit,
     onTest: () -> Unit,
+    catalog: ModelCatalog,
+    onLoadModels: () -> Unit,
 ) {
     var url by rememberSaveable(ai.baseUrl) { mutableStateOf(ai.baseUrl) }
     var background by rememberSaveable(ai.modelBackground) { mutableStateOf(ai.modelBackground) }
     var answer by rememberSaveable(ai.modelAnswer) { mutableStateOf(ai.modelAnswer) }
+    // Campo que se rellena desde la lista de OpenRouter: "background", "answer" o null (cerrada).
+    var picking by rememberSaveable { mutableStateOf<String?>(null) }
+    val openRouter = OpenRouterModels.isOpenRouter(url.trim())
+    val pick: (String) -> Unit = { field ->
+        picking = field
+        onLoadModels()
+    }
     val urlOk = isValidBaseUrl(url)
     val dirty = url.trim().trimEnd('/') != ai.baseUrl || background.trim() != ai.modelBackground || answer.trim() != ai.modelAnswer
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -420,6 +468,7 @@ private fun ConnectionFields(
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (openRouter) TextButton(onClick = { pick("background") }) { Text(stringResource(R.string.settings_ai_model_pick)) }
         OutlinedTextField(
             value = answer,
             onValueChange = { answer = it },
@@ -429,6 +478,7 @@ private fun ConnectionFields(
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
+        if (openRouter) TextButton(onClick = { pick("answer") }) { Text(stringResource(R.string.settings_ai_model_pick)) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { onSave(url, background, answer) },
@@ -457,7 +507,95 @@ private fun ConnectionFields(
             )
         }
     }
+    picking?.let { field ->
+        ModelPickerDialog(
+            catalog = catalog,
+            onRetry = onLoadModels,
+            onPick = { id ->
+                if (field == "background") background = id else answer = id
+                picking = null
+            },
+            onDismiss = { picking = null },
+        )
+    }
 }
+
+private const val NEW_MS = 30 * 24 * 3_600_000L // «Nuevo»: llegó a OpenRouter hace menos de un mes
+
+/** Lista viva de OpenRouter con buscador: elegir rellena el campo; se guarda con «Guardar conexión», como a mano. */
+@Composable
+private fun ModelPickerDialog(catalog: ModelCatalog, onRetry: () -> Unit, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    LaunchedEffect(Unit) { onRetry() } // también si se ha restaurado abierto tras morir el proceso (sin carga en marcha)
+    var query by rememberSaveable { mutableStateOf("") }
+    val now = remember { System.currentTimeMillis() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_ai_models_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.settings_ai_models_note), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text(stringResource(R.string.settings_ai_models_search)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                when (catalog) {
+                    ModelCatalog.Idle, ModelCatalog.Loading -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text(stringResource(R.string.settings_ai_models_loading), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    ModelCatalog.Failed -> Column {
+                        Text(stringResource(R.string.settings_ai_models_error), color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.settings_ai_models_retry)) }
+                    }
+                    is ModelCatalog.Loaded -> {
+                        val q = query.trim()
+                        val shown = catalog.models.filter { q.isEmpty() || it.id.contains(q, ignoreCase = true) || it.name.contains(q, ignoreCase = true) }
+                        if (shown.isEmpty()) Text(stringResource(R.string.settings_ai_models_empty))
+                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                            items(shown, key = { it.id }) { m -> ModelRow(m, isNew = now - m.createdAt < NEW_MS) { onPick(m.id) } }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+@Composable
+private fun ModelRow(m: OpenRouterModel, isNew: Boolean, onClick: () -> Unit) {
+    val free = m.promptPerM == 0.0 && m.completionPerM == 0.0
+    ListItem(
+        headlineContent = { Text(m.name) },
+        overlineContent = if (isNew) {
+            { Text(stringResource(R.string.settings_ai_models_new), color = MaterialTheme.colorScheme.primary) }
+        } else {
+            null
+        },
+        supportingContent = {
+            Column {
+                Text(m.id, style = MaterialTheme.typography.bodySmall)
+                when {
+                    free -> Text(stringResource(R.string.settings_ai_models_free), style = MaterialTheme.typography.bodySmall)
+                    m.promptPerM != null && m.completionPerM != null -> Text(
+                        stringResource(R.string.settings_ai_models_price, price(m.promptPerM), price(m.completionPerM)),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}
+
+/** 0,1 · 0,05 · 15: sin ceros de más, en el formato del idioma del móvil. */
+private fun price(perM: Double): String =
+    NumberFormat.getNumberInstance().apply { maximumFractionDigits = if (perM < 0.1) 3 else 2 }.format(perM)
 
 @Composable
 private fun ConsentDialog(provider: String, host: String, preset: AiPreset?, presetUrl: Boolean, onAccept: () -> Unit, onDismiss: () -> Unit) {

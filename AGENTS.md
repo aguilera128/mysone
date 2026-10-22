@@ -45,8 +45,9 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 Desactivada hasta que en Ajustes › IA se elige proveedor, se pone la clave y se acepta el aviso de
 envío. Por defecto Anthropic: `claude-haiku-5-5` en segundo plano (≈1 $/mes con 3 h de voz al día) y
-`claude-opus-5-5` para responder; ambos se cambian en Ajustes. Mistral (UE), DeepSeek (desaconsejado:
-datos en China) y cualquier API compatible con OpenAI como alternativas. Sin IA, la transcripción y la
+`claude-opus-5-5` para responder; ambos se cambian en Ajustes. Mistral (UE), OpenRouter (cualquier modelo,
+elegido de su catálogo vivo para que salgan los nuevos), DeepSeek (desaconsejado: datos en China) y cualquier
+API compatible con OpenAI como alternativas. Sin IA, la transcripción y la
 búsqueda funcionan igual en local. Detalle y costes: `docs/investigacion/05`.
 
 ## Limitaciones conocidas (v1)

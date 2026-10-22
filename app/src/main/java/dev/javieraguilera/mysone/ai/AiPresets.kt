@@ -62,6 +62,16 @@ object AiPresets {
             noticeRes = R.string.ai_notice_mistral,
         ),
         AiPreset(
+            id = "openrouter",
+            nameRes = R.string.ai_preset_openrouter,
+            provider = AiProvider.OPENAI_COMPAT,
+            baseUrl = OpenRouterModels.BASE_URL,
+            modelBackground = "anthropic/claude-haiku-5.5",
+            modelAnswer = "anthropic/claude-opus-5.5",
+            jsonMode = JsonMode.SCHEMA,
+            noticeRes = R.string.ai_notice_openrouter,
+        ),
+        AiPreset(
             id = "deepseek",
             nameRes = R.string.ai_preset_deepseek,
             provider = AiProvider.OPENAI_COMPAT,

@@ -40,7 +40,7 @@ class QuickReminders(private val container: AppContainer, private val processor:
         val tasks = validTasks(out.tasks.filter { it.explicitReminder }, segment.startedAt, zone, registered)
         // Olvidado durante la llamada: sin tarea ni alarma con lo que se dijo.
         db.withWriteTransaction {
-            if (stillThere(segment)) tasks.forEach { processor.saveTask(it, segment.conversationId, now) }
+            if (stillThere(segment)) tasks.forEach { processor.saveTask(it, segment.conversationId, now, quick = true) }
         }
     }
 

@@ -231,7 +231,12 @@ interface TaskDao {
     @Query("DELETE FROM task WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("UPDATE task SET state = :state WHERE id = :id")
+    /** El procesado dice que la conversación no es ruido: sus recordatorios rápidos quedan como normales (§7.4). */
+    @Query("UPDATE task SET quick = 0 WHERE conversationId = :id AND quick = 1")
+    suspend fun confirmQuick(id: Long)
+
+    /** Solo lo llaman acciones del dueño (aceptar, descartar, «Hecho»): la tarea deja de ser un recordatorio rápido sin tocar. */
+    @Query("UPDATE task SET state = :state, quick = 0 WHERE id = :id")
     suspend fun setState(id: Long, state: String)
 
     @Query("SELECT * FROM task WHERE state = :state ORDER BY createdAt DESC")

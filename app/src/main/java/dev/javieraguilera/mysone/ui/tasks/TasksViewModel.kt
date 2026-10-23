@@ -82,7 +82,8 @@ class TasksViewModel(private val container: AppContainer) : ViewModel() {
      */
     private fun save(id: Long, change: (TaskItem) -> TaskItem) {
         container.appScope.launch {
-            val t = dao.get(id)?.let(change) ?: return@launch
+            // El dueño la ha tocado: ya no es un recordatorio rápido que el veredicto de ruido pueda quitar.
+            val t = dao.get(id)?.let(change)?.copy(quick = false) ?: return@launch
             dao.update(t)
             // El programador solo pone alarma si está OPEN y la hora es futura.
             container.reminders.cancel(t.id)

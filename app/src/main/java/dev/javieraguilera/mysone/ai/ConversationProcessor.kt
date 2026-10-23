@@ -50,6 +50,16 @@ class ConversationProcessor(private val container: AppContainer) {
         return save(c.id, segments) { current ->
             db.tasks().forConversation(c.id).filter { it.state == TaskState.SUGGESTED }.forEach { db.tasks().delete(it.id) }
             db.facts().forConversation(c.id).filter { it.state == FactState.SUGGESTED }.forEach { db.facts().delete(it.id) }
+            // Ruido (tele, radio): los recordatorios rápidos que dejó y que aún no han sonado vuelven a sugerencia, sin alarma.
+            if (result.isNoise) {
+                quickToDemote(db.tasks().forConversation(c.id)).forEach {
+                    db.tasks().update(it.copy(state = TaskState.SUGGESTED))
+                    container.reminders.cancel(it.id)
+                }
+            } else {
+                // El primer «no es ruido» las da por buenas: un reprocesado posterior («Reprocesar», «Olvidar») ya no las quita.
+                db.tasks().confirmQuick(c.id)
+            }
             result.tasks.forEach { saveTask(it, c.id, now) }
             result.facts.forEach { db.facts().insert(Fact(text = it, state = FactState.SUGGESTED, conversationId = c.id, createdAt = now)) }
             db.conversations().update(
@@ -88,15 +98,20 @@ class ConversationProcessor(private val container: AppContainer) {
     }
 
     /** Inserta la tarea y, si es un recordatorio abierto, programa la alarma (con la hora recién pasada, avisa ya). */
-    internal suspend fun saveTask(t: NewTask, conversationId: Long, now: Long) {
+    /** [quick]: viene de QuickReminders (ver [TaskItem.quick]). */
+    internal suspend fun saveTask(t: NewTask, conversationId: Long, now: Long, quick: Boolean = false) {
         val item = TaskItem(
             text = t.text, state = t.state, dueAt = t.dueAt, remindAt = t.remindAt,
-            conversationId = conversationId, sourceQuote = t.quote, createdAt = now,
+            conversationId = conversationId, sourceQuote = t.quote, createdAt = now, quick = quick,
         )
         val id = container.db.tasks().insert(item)
         if (item.state == TaskState.OPEN && item.remindAt != null) container.reminders.schedule(item.copy(id = id))
     }
 }
+
+/** Recordatorios rápidos que el dueño no ha tocado y que aún no han avisado: los que el veredicto de ruido quita. */
+internal fun quickToDemote(tasks: List<TaskItem>): List<TaskItem> =
+    tasks.filter { it.quick && it.state == TaskState.OPEN && it.notifiedAt == null }
 
 /** Por encima de esto (~1 h de conversación) se procesa por partes y se fusiona. */
 internal const val MAX_PART_CHARS = 60_000

@@ -15,10 +15,11 @@ import kotlinx.coroutines.Dispatchers
         Conversation::class, Segment::class, SegmentFts::class, ConversationFts::class, PendingAudio::class,
         TaskItem::class, Fact::class, DailyDigest::class, ChatMessage::class, ListeningGap::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
     // 2: segment.speaker (quién habla, §5.6). Columna nueva que admite null: Room la añade sin tocar lo guardado.
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    // 3: task.quick (recordatorio rápido sin tocar, §7.4). NOT NULL con DEFAULT 0: las de antes quedan como normales.
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversations(): ConversationDao

@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.data
 
+import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.ForeignKey
 import androidx.room3.Fts5
@@ -132,6 +133,9 @@ data class TaskItem(
     val sourceQuote: String? = null,
     val createdAt: Long,
     val notifiedAt: Long? = null,
+    // Recordatorio rápido (QuickReminders) que el dueño aún no ha tocado: si la conversación resulta ser ruido de
+    // tele o radio, vuelve a sugerencia y pierde la alarma. Aceptar, editar, hecho o descartar lo ponen a false.
+    @ColumnInfo(defaultValue = "0") val quick: Boolean = false,
 )
 
 @Serializable

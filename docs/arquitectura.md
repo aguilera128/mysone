@@ -117,7 +117,8 @@ data class TaskItem(@PrimaryKey(autoGenerate = true) val id: Long = 0,
   val conversationId: Long? = null, // null = creada a mano
   val sourceQuote: String? = null,
   val createdAt: Long,
-  val notifiedAt: Long? = null)
+  val notifiedAt: Long? = null,
+  val quick: Boolean = false)    // recordatorio rápido sin tocar (§7.4); DEFAULT 0, migración 2→3
 
 @Entity(tableName = "fact", foreignKeys = [→ conversation CASCADE], indices = [Index("conversationId")])
 data class Fact(@PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -159,7 +160,9 @@ DAOs (suspend/Flow; lista orientativa, la fase A puede añadir las que vea neces
 
 `schemas/` se versiona en git (`room3 { schemaDirectory(...) }`). Versión 2 (22-oct-2026): `segment.speaker`, con
 `@AutoMigration(from = 1, to = 2)`, que solo hace `ALTER TABLE segment ADD COLUMN speaker INTEGER DEFAULT NULL` (el FTS y
-sus triggers no cambian; lo ya guardado queda sin hablante). Cada cambio de esquema = versión nueva, su migración y su
+sus triggers no cambian; lo ya guardado queda sin hablante). Versión 3 (23-oct-2026): `task.quick`, con
+`@AutoMigration(from = 2, to = 3)`, que solo hace `ALTER TABLE task ADD COLUMN quick INTEGER NOT NULL DEFAULT 0` (las
+tareas de antes quedan como no rápidas). Cada cambio de esquema = versión nueva, su migración y su
 caso en `MigrationTest` (instrumentado, valida contra `schemas/`).
 
 ### Ajustes (DataStore Preferences, `SettingsStore`)
@@ -603,6 +606,10 @@ programan. El procesado completo posterior recibe esas tareas como "ya registrad
 conversación que esperan el cerrojo se juntan: solo se envía el último y los anteriores que su ventana no recoja (a
 más de 3 min, cuando la cola de transcripción va con retraso), así una tele con varios «recuerda» seguidos es una
 llamada y no una por frase.
+Se guardan con `quick = true`. Si después el procesado completo dice que la conversación es ruido (tele, radio),
+las `quick` que siguen `OPEN` y aún no han avisado pasan a `SUGGESTED` y pierden la alarma: el dueño decide, como
+promete el prompt. Cualquier acción suya sobre la tarea (aceptar, editar, «Hecho», descartar) pone `quick = false`, y también el
+primer procesado que dice que no es ruido: un reprocesado posterior ya no las quita.
 
 ### 7.5 Preguntar (`AskEngine`)
 1. **Planificador** (modelo de segundo plano, effort `low`, esquema): entrada = ahora (fecha, día,

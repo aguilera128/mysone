@@ -54,4 +54,42 @@ class MigrationTest {
             c.execSQL("INSERT INTO segment_fts(segment_fts, rank) VALUES('integrity-check', 1)")
         }
     }
+
+    @Test
+    fun v2aV3ConservaLasTareasYLasDejaComoNoRapidas() = runTest {
+        helper.createDatabase(2).use { c ->
+            c.execSQL("INSERT INTO conversation (id, startedAt, endedAt, source, state, isNoise, processAttempts) VALUES (1, 0, 60000, 'MIC', 'DONE', 0, 0)")
+            c.execSQL("INSERT INTO task (id, text, state, remindAt, conversationId, sourceQuote, createdAt) VALUES (1, 'llamar a Marta', 'OPEN', 90000, 1, 'recuérdame llamar a Marta', 10)")
+        }
+        // Valida contra 3.json; las tareas de antes no son recordatorios rápidos (DEFAULT 0).
+        helper.runMigrationsAndValidate(3).use { c ->
+            c.prepare("SELECT text, state, remindAt, sourceQuote, quick FROM task WHERE id = 1").use {
+                assertTrue(it.step())
+                assertEquals("llamar a Marta", it.getText(0))
+                assertEquals("OPEN", it.getText(1))
+                assertEquals(90000L, it.getLong(2))
+                assertEquals("recuérdame llamar a Marta", it.getText(3))
+                assertEquals(0L, it.getLong(4))
+            }
+            c.execSQL("INSERT INTO task (text, state, conversationId, createdAt, quick) VALUES ('comprar pan', 'OPEN', 1, 20, 1)")
+            c.prepare("SELECT quick FROM task WHERE text = 'comprar pan'").use {
+                assertTrue(it.step())
+                assertEquals(1L, it.getLong(0))
+            }
+        }
+    }
+
+    @Test
+    fun v1aV3EnCadena() = runTest {
+        helper.createDatabase(1).use { c ->
+            c.execSQL("INSERT INTO conversation (id, startedAt, endedAt, source, state, isNoise, processAttempts) VALUES (1, 0, 60000, 'MIC', 'DONE', 0, 0)")
+            c.execSQL("INSERT INTO task (id, text, state, conversationId, createdAt) VALUES (1, 'pedir cita', 'OPEN', 1, 10)")
+        }
+        helper.runMigrationsAndValidate(3).use { c ->
+            c.prepare("SELECT quick FROM task WHERE id = 1").use {
+                assertTrue(it.step())
+                assertEquals(0L, it.getLong(0))
+            }
+        }
+    }
 }

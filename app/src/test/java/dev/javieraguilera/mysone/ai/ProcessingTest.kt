@@ -5,6 +5,7 @@ import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.DailyDigest
 import dev.javieraguilera.mysone.data.Segment
+import dev.javieraguilera.mysone.data.TaskItem
 import dev.javieraguilera.mysone.data.TaskState
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -94,6 +95,18 @@ class ProcessingTest {
         )
         assertEquals(listOf("Sí, mañana te lo envío.", "Paga la luz"), tasks.map { it.quote })
         assertEquals("", speakerPrefix(null))
+    }
+
+    @Test fun `el ruido solo quita los recordatorios rápidos sin tocar que aún no han sonado`() {
+        fun t(id: Long, quick: Boolean, state: String = TaskState.OPEN, notifiedAt: Long? = null) =
+            TaskItem(id = id, text = "t$id", state = state, remindAt = 1_000, conversationId = 1, createdAt = 0, notifiedAt = notifiedAt, quick = quick)
+        val tasks = listOf(
+            t(1, quick = true), // de la tele, sin sonar: vuelve a sugerencia
+            t(2, quick = false), // la aceptó o editó el dueño
+            t(3, quick = true, notifiedAt = 900), // ya avisó: se queda
+            t(4, quick = true, state = TaskState.DONE), // la marcó hecha
+        )
+        assertEquals(listOf(1L), quickToDemote(tasks).map { it.id })
     }
 
     @Test fun `no repite tareas ya registradas`() {

@@ -34,9 +34,13 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 ./gradlew --stop
 ```
 
-- La release va firmada con la clave **debug** de la máquina que compila (instalación manual). Un APK
-  compilado en otro PC no se instala encima: hay que desinstalar antes (se pierden los datos) o usar
-  siempre la misma clave. Para distribuirla, una clave de release propia, fuera del repositorio.
+- La release se firma con la clave de release (`CN=Mysone`, SHA-256 `52edf425…9cbef5`) si
+  `~/.gradle/gradle.properties` tiene `mysone.release.storeFile`, `.storePassword`, `.keyAlias` y `.keyPassword`;
+  el keystore está en `~/.keystores/mysone-release.jks`. **Ninguno de los dos va al repositorio y hay que tener
+  copia: sin ellos no se pueden publicar actualizaciones.** Sin esas propiedades (CI, otro PC) se firma con la
+  clave debug, que no se instala encima de la publicada.
+- Publicar: subir `versionCode`/`versionName`, `./gradlew assembleRelease` y
+  `gh release create vX.Y.Z app/build/outputs/apk/release/app-release.apk#mysone-X.Y.Z.apk`.
 - El APK lleva `arm64-v8a` y `x86_64` (~73 MB). El modelo de voz NO va dentro: se descarga en el
   onboarding (Canary 207 MB o Parakeet 670 MB, verificados por SHA-256).
 - CI: `.github/workflows/ci.yml` pasa `assembleDebug assembleRelease testDebugUnitTest lint` (JDK 21) en cada push a

@@ -11,9 +11,26 @@ val sentryDsn: String = providers.gradleProperty("mysone.sentryDsn")
     .orElse(providers.environmentVariable("SENTRY_DSN"))
     .getOrElse("")
 
+// Clave de release propia, FUERA del repositorio: ruta y contraseñas en ~/.gradle/gradle.properties
+// (mysone.release.storeFile, .storePassword, .keyAlias, .keyPassword). Sin ella, la release se firma con la
+// clave debug de la máquina (CI y pruebas), que no sirve para publicar: no se podría actualizar encima.
+fun releaseProp(name: String): String? = providers.gradleProperty("mysone.release.$name").orNull
+val releaseStoreFile: String? = releaseProp("storeFile")
+
 android {
     namespace = "dev.javieraguilera.mysone"
     compileSdk = 37
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseProp("storePassword")
+                keyAlias = releaseProp("keyAlias")
+                keyPassword = releaseProp("keyPassword")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "dev.javieraguilera.mysone"
@@ -38,7 +55,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug") // uso personal por sideload
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
         // La release (R8 y shrink) contra el servidor falso en el emulador; se instala junto a las otras.
         create("qa") {
@@ -61,8 +78,8 @@ android {
         compose = true
         buildConfig = true
     }
-    // MainActivity fuerza es-ES (selectores de Material 3): con un AAB partido por idioma, en un móvil en
-    // otro idioma no llegarían las cadenas en español de las librerías.
+    // Con un AAB partido por idioma, cambiar el idioma de la app (Ajustes de Android) dejaría sin las cadenas
+    // de ese idioma a las librerías hasta que Play bajara el trozo; sin Play no llegarían nunca.
     bundle {
         language { enableSplit = false }
     }

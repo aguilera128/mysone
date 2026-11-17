@@ -25,6 +25,17 @@ what you talked about, citing the conversation each answer comes from. It is ins
 - On first run the app downloads a speech model: Canary 180M (207 MB) or Parakeet TDT 0.6B v3 (670 MB). Both are
   verified by SHA-256.
 
+## Install
+
+Download `mysone-X.Y.Z.apk` from [Releases](https://github.com/aguilera128/mysone/releases) and open it on the phone
+(Android will ask you to allow installing apps from that source). Updates install over it and keep your data.
+
+The APK is signed with this certificate (SHA-256), which you can check with `apksigner verify --print-certs`:
+
+```
+52:ED:F4:25:91:71:B1:BD:09:C2:81:5B:DC:27:72:B6:74:09:83:93:FF:7F:90:5E:98:4D:6A:0A:B9:9C:BE:F5
+```
+
 ## Build
 
 You need JDK 21 (the one bundled with Android Studio works) and the Android SDK.
@@ -34,8 +45,10 @@ You need JDK 21 (the one bundled with Android Studio works) and the Android SDK.
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build is signed with your local **debug** key, which is meant for installing it yourself. To publish it,
-configure your own release key outside the repository.
+Without a release key the release build is signed with your local **debug** key, which is fine for installing it
+yourself. To sign with your own key, set `mysone.release.storeFile`, `mysone.release.storePassword`,
+`mysone.release.keyAlias` and `mysone.release.keyPassword` in `~/.gradle/gradle.properties` (never in the repository).
+APKs built this way cannot be installed over the official ones from Releases: uninstall first.
 
 Crash reporting with Sentry is off unless you build with a DSN, either as the `SENTRY_DSN` environment variable or the
 `mysone.sentryDsn` Gradle property. It never sends transcripts, prompts, answers or keys.

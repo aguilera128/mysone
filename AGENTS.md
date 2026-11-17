@@ -39,6 +39,9 @@ adb install -r app/build/outputs/apk/release/app-release.apk
   siempre la misma clave. Para distribuirla, una clave de release propia, fuera del repositorio.
 - El APK lleva `arm64-v8a` y `x86_64` (~73 MB). El modelo de voz NO va dentro: se descarga en el
   onboarding (Canary 207 MB o Parakeet 670 MB, verificados por SHA-256).
+- CI: `.github/workflows/ci.yml` pasa `assembleDebug assembleRelease testDebugUnitTest lint` (JDK 21) en cada push a
+  main y en cada PR; los tests instrumentados no (necesitan emulador). Las acciones van fijadas por commit: al
+  actualizarlas, cambiar el SHA y la versión del comentario.
 - Sentry solo se activa si al compilar existe `SENTRY_DSN` (o la propiedad `mysone.sentryDsn`).
   Sin DSN no envía nada. Nunca recibe transcripciones, prompts, respuestas ni la clave.
 

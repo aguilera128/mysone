@@ -67,7 +67,6 @@ bienvenida. Nada de esto está en un commit todavía.
   hace falta una clave de release propia, fuera del repositorio. Sin ella, cada actualización obliga a desinstalar.
 - **F-Droid y builds reproducibles.** sherpa-onnx llega por JitPack y trae binarios nativos precompilados. F-Droid
   pediría compilarlos desde el código fuente.
-- **CI.** No hay workflow de GitHub Actions. Un `assembleDebug testDebugUnitTest lint` en cada PR es lo mínimo
-  para recibir contribuciones.
+- **CI.** Hecho después: `.github/workflows/ci.yml` (build, tests unitarios y lint en cada push y PR).
 - **GitHub.** Hacerlo público, poner descripción y temas, y activar *Private vulnerability reporting*, que es a
   donde apunta la sección de seguridad del README.

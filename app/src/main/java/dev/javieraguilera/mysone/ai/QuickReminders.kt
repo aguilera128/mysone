@@ -49,9 +49,9 @@ class QuickReminders(private val container: AppContainer, private val processor:
     companion object {
         private const val WINDOW_MS = 3 * 60_000L
 
-        // La de §7.4, más "avisame" sin tilde (el ASR a veces la pierde) y "que no se me olvide".
+        // La de §7.4, más "avisame" sin tilde (el ASR a veces la pierde), "que no se me olvide" y las inglesas.
         private val TRIGGER = Regex(
-            """\b(recu[eé]rd(a|ame|amelo|ale)|av[ií]s(ame|ale)|no ((se|me|te|nos) ){1,2}(olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo))\b""",
+            """\b(recu[eé]rd(a|ame|amelo|ale)|av[ií]s(ame|ale)|no ((se|me|te|nos) ){1,2}(olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo)|remind (me|us)|don['’]?t (let me )?forget)\b""",
             RegexOption.IGNORE_CASE,
         )
 
@@ -73,10 +73,11 @@ class QuickReminders(private val container: AppContainer, private val processor:
 }
 
 /** El momento de referencia es cuando se dijo, no cuando se transcribió (la cola puede ir con retraso). */
-internal fun reminderInput(saidAt: Long, recent: List<Segment>, registered: List<String>, zone: ZoneId): String = buildString {
+internal fun reminderInput(saidAt: Long, recent: List<Segment>, registered: List<String>, zone: ZoneId, lang: String = Prompts.outputLanguage()): String = buildString {
     appendLine("<momento>")
     appendLine("dicho: ${Time.dateTimeLong(saidAt, zone)} (${Time.toLocalDateTime(saidAt, zone)})")
     appendLine("zona: ${zone.id}")
+    appendLine("idioma de salida: $lang")
     appendLine("</momento>")
     appendRegistered(registered)
     appendTranscript(recent, zone)

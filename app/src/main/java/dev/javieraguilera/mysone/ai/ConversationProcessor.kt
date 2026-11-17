@@ -130,11 +130,12 @@ internal data class Processed(
 )
 
 /** Mensaje de usuario del procesado: lo único que cambia entre llamadas. */
-internal fun processInput(c: Conversation, part: List<Segment>, registered: List<String>, index: Int, total: Int, zone: ZoneId): String =
+internal fun processInput(c: Conversation, part: List<Segment>, registered: List<String>, index: Int, total: Int, zone: ZoneId, lang: String = Prompts.outputLanguage()): String =
     buildString {
         appendLine("<conversacion>")
         appendLine("inicio: ${Time.dateTimeLong(c.startedAt, zone)} (${Time.toLocalDateTime(c.startedAt, zone)})")
         appendLine("zona: ${zone.id}")
+        appendLine("idioma de salida: $lang")
         appendLine("duración: ${((c.endedAt - c.startedAt) / 60_000).coerceAtLeast(1)} min")
         if (total > 1) appendLine("parte: $index de $total")
         appendLine("</conversacion>")

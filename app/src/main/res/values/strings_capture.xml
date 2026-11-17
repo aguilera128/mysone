@@ -1,49 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Captura: notificación de la escucha, "Toca para reanudar" y errores (capture/). -->
+<!-- Capture: listening notification, "Tap to resume" and errors (capture/). -->
 <resources>
-    <string name="capture_title_starting">Preparando la escucha…</string>
-    <string name="capture_title_listening">Escuchando</string>
-    <string name="capture_title_paused">En pausa hasta las %1$s</string>
-    <string name="capture_title_mic_busy">Micrófono ocupado por una llamada u otra app</string>
-    <string name="capture_title_finishing">Escucha detenida. Terminando de transcribir…</string>
+    <string name="capture_title_starting">Getting ready to listen…</string>
+    <string name="capture_title_listening">Listening</string>
+    <string name="capture_title_paused">Paused until %1$s</string>
+    <string name="capture_title_mic_busy">Microphone busy with a call or another app</string>
+    <string name="capture_title_finishing">Listening stopped. Finishing transcription…</string>
 
     <plurals name="capture_fragments_today">
-        <item quantity="one">%d fragmento hoy</item>
-        <item quantity="many">%d fragmentos hoy</item>
-        <item quantity="other">%d fragmentos hoy</item>
+        <item quantity="one">%d fragment today</item>
+        <item quantity="other">%d fragments today</item>
     </plurals>
     <plurals name="capture_pending">
-        <item quantity="one">%d pendiente</item>
-        <item quantity="many">%d pendientes</item>
-        <item quantity="other">%d pendientes</item>
+        <item quantity="one">%d pending</item>
+        <item quantity="other">%d pending</item>
     </plurals>
 
-    <string name="capture_hold_battery">Batería baja: se transcribirá al cargar</string>
-    <string name="capture_hold_thermal">Móvil muy caliente: transcripción en espera</string>
+    <string name="capture_hold_battery">Low battery: will transcribe when charging</string>
+    <string name="capture_hold_thermal">Phone too hot: transcription on hold</string>
 
-    <string name="capture_action_pause_15">Pausar 15 min</string>
-    <string name="capture_action_pause_60">Pausar 1 h</string>
-    <string name="capture_action_resume">Reanudar</string>
-    <string name="capture_action_stop">Detener</string>
-    <string name="capture_action_dont_resume">No reanudar</string>
+    <string name="capture_action_pause_15">Pause 15 min</string>
+    <string name="capture_action_pause_60">Pause 1 h</string>
+    <string name="capture_action_resume">Resume</string>
+    <string name="capture_action_stop">Stop</string>
+    <string name="capture_action_dont_resume">Don\'t resume</string>
 
-    <string name="capture_resume_title">La escucha se ha detenido</string>
-    <string name="capture_resume_text">Pulsa «Reanudar» para seguir escuchando</string>
+    <string name="capture_resume_title">Listening has stopped</string>
+    <string name="capture_resume_text">Tap “Resume” to keep listening</string>
 
-    <string name="capture_error_start">No se ha podido iniciar la escucha. Vuelve a intentarlo desde la app.</string>
-    <string name="capture_error_mic">No se ha podido abrir el micrófono</string>
-    <string name="capture_error_mic_lost">Se ha perdido el acceso al micrófono</string>
-    <string name="capture_error_model">No se ha podido cargar el modelo de transcripción</string>
+    <string name="capture_error_start">Couldn\'t start listening. Try again from the app.</string>
+    <string name="capture_error_mic">Couldn\'t open the microphone</string>
+    <string name="capture_error_mic_lost">Microphone access was lost</string>
+    <string name="capture_error_model">Couldn\'t load the transcription model</string>
 
-    <!-- Último cierre de la app con la escucha en marcha (Ajustes › Batería) -->
-    <string name="capture_last_exit">Último cierre de la app mientras escuchaba: %1$s (%2$s)</string>
-    <string name="capture_exit_low_memory">poca memoria</string>
-    <string name="capture_exit_mem_limiter">límite de memoria de Android</string>
-    <string name="capture_exit_user">detenida a mano</string>
-    <string name="capture_exit_native">fallo nativo</string>
-    <string name="capture_exit_crash">fallo de la app</string>
-    <string name="capture_exit_resources">exceso de consumo</string>
-    <string name="capture_exit_updated">actualización de la app</string>
-    <string name="capture_exit_unknown">Android no anotó el motivo</string>
-    <string name="capture_exit_system">el sistema</string>
+    <!-- Last app exit while listening was running (Settings › Battery) -->
+    <string name="capture_last_exit">Last app exit while listening: %1$s (%2$s)</string>
+    <string name="capture_exit_low_memory">low memory</string>
+    <string name="capture_exit_mem_limiter">Android memory limit</string>
+    <string name="capture_exit_user">stopped manually</string>
+    <string name="capture_exit_native">native crash</string>
+    <string name="capture_exit_crash">app crash</string>
+    <string name="capture_exit_resources">excessive resource use</string>
+    <string name="capture_exit_updated">app update</string>
+    <string name="capture_exit_unknown">Android didn\'t record the reason</string>
+    <string name="capture_exit_system">the system</string>
 </resources>

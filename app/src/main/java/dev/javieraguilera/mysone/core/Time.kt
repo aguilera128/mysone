@@ -1,5 +1,6 @@
 package dev.javieraguilera.mysone.core
 
+import android.text.format.DateFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -12,6 +13,8 @@ import java.util.Locale
  * Fechas y horas. En la BD todo va en epoch ms UTC; aquí se pasa a la zona del dispositivo.
  * Los días se identifican con su fecha local ISO ("2026-10-15"), igual que `DailyDigest.day`.
  * Todas las funciones aceptan la zona para poder probarlas; por defecto, la del sistema.
+ * [dayLong] y [dateTimeLong] van siempre en español porque son entrada de los prompts (que están en español);
+ * lo que se enseña en pantalla usa [dayShort], [dateTimeUi] y [uiFormat], en el idioma del teléfono.
  */
 object Time {
     val SPAIN: Locale = Locale.forLanguageTag("es-ES")
@@ -19,7 +22,6 @@ object Time {
     private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm", SPAIN)
     private val HOUR_MINUTE_SECOND = DateTimeFormatter.ofPattern("HH:mm:ss", SPAIN)
     private val DAY_LONG = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", SPAIN)
-    private val DAY_SHORT = DateTimeFormatter.ofPattern("EEE d MMM", SPAIN)
     private val LOCAL_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
     fun zone(): ZoneId = ZoneId.systemDefault()
@@ -33,8 +35,18 @@ object Time {
     /** "jueves 15 de octubre de 2026" */
     fun dayLong(ms: Long, zone: ZoneId = zone()): String = DAY_LONG.format(at(ms, zone))
 
-    /** "jue 15 oct" (la abreviatura exacta depende de los datos CLDR del sistema) */
-    fun dayShort(ms: Long, zone: ZoneId = zone()): String = DAY_SHORT.format(at(ms, zone))
+    /** "jue, 15 oct" / "Thu, Oct 15", según el idioma del teléfono (pantalla). */
+    fun dayShort(ms: Long, zone: ZoneId = zone()): String = uiFormat("EEEdMMM").format(at(ms, zone))
+
+    /** "jueves, 15 de octubre de 2026, 18:42" / "Thursday, October 15, 2026, 18:42" (pantalla). */
+    fun dateTimeUi(ms: Long, zone: ZoneId = zone()): String = "${uiFormat("EEEEdMMMMyyyy").format(at(ms, zone))}, ${hourMinute(ms, zone)}"
+
+    /** El idioma de la pantalla: la app solo está en inglés y español; con el teléfono en otro, sale en inglés. */
+    fun uiLocale(): Locale = Locale.getDefault().takeIf { it.language == "en" || it.language == "es" } ?: Locale.ENGLISH
+
+    /** Formato de fecha de Android en el idioma de la pantalla a partir de un esqueleto ("EEEdMMM"). */
+    fun uiFormat(skeleton: String, locale: Locale = uiLocale()): DateTimeFormatter =
+        DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
 
     /** "jueves 15 de octubre de 2026, 18:42" (entrada de los prompts) */
     fun dateTimeLong(ms: Long, zone: ZoneId = zone()): String = "${dayLong(ms, zone)}, ${hourMinute(ms, zone)}"

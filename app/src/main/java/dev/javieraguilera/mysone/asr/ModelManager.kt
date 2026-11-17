@@ -212,7 +212,8 @@ class ModelManager(private val context: Context) {
     }
 
     /** Reconocedor nuevo con los ficheros de [model], sin que nadie los borre mientras se leen. */
-    internal suspend fun openRecognizer(model: AsrModel): OfflineRecognizer = files.withLock { createRecognizer(model, modelDir(model.id)) }
+    internal suspend fun openRecognizer(model: AsrModel, language: String): OfflineRecognizer =
+        files.withLock { createRecognizer(model, modelDir(model.id), language) }
 
     /**
      * Extractor de huellas de voz (§5.6), igual que [openRecognizer]: nadie borra el modelo mientras se lee. null si no
@@ -244,18 +245,18 @@ class ModelManager(private val context: Context) {
         return ceil(info.totalMem / 1_073_741_824.0).toInt()
     }
 
-    /** Transcribe assets/selftest_es.wav con el modelo [id]. */
+    /** Transcribe assets/selftest_es.wav con el modelo [id] (Canary, en [language]). */
     // ponytail: crea su propio reconocedor; si el Transcriber tiene cargado el mismo modelo, dobla la RAM
     // mientras dura la prueba. Si molesta, que la UI pruebe a través de container.transcriber.
-    suspend fun selfTest(id: String): Result<String> = withContext(Dispatchers.Default) {
+    suspend fun selfTest(id: String, language: String): Result<String> = withContext(Dispatchers.Default) {
         val model = catalog.find { it.id == id }
         if (model == null || !isInstalled(id)) {
             return@withContext Result.failure(IllegalStateException(context.getString(R.string.asr_error_not_installed)))
         }
         val text = try {
-            val rec = openRecognizer(model)
+            val rec = openRecognizer(model, language)
             try {
-                rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id)
+                rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, fixEnye(id, language))
             } finally {
                 rec.release()
             }
@@ -399,8 +400,12 @@ internal const val PARAKEET_MIN_RAM_GB = 6
 /** Modelo de huellas de voz ([ModelManager.speakerModel]). */
 internal const val SPEAKER_MODEL_ID = "eres2net-voxceleb"
 
-/** Modelo que se propone para [ramGb] (0 = no se sabe): Parakeet si hay RAM de sobra; si no, Canary, el ligero. */
-internal fun recommendedModelId(ramGb: Int): String = if (ramGb >= PARAKEET_MIN_RAM_GB) "parakeet-v3" else "canary-180m-es"
+/**
+ * Modelo que se propone para [ramGb] (0 = no se sabe): Parakeet si hay RAM de sobra o si el idioma del teléfono no
+ * es uno de los cuatro de Canary ([canaryLanguage]); si no, Canary, el ligero.
+ */
+internal fun recommendedModelId(ramGb: Int, language: String = phoneLocale().language): String =
+    if (ramGb >= PARAKEET_MIN_RAM_GB || language !in CANARY_LANGUAGES) "parakeet-v3" else CANARY_ID
 
 internal enum class Net { NONE, METERED, UNMETERED }
 

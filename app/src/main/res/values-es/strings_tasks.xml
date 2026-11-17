@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recordatorios (tasks/ReminderReceiver.kt). -->
+<resources>
+    <string name="reminder_title">Recordatorio</string>
+    <string name="reminder_title_late">Recordatorio pasado</string>
+    <string name="reminder_action_done">Hecho</string>
+    <string name="reminder_action_snooze">Posponer 1 h</string>
+</resources>

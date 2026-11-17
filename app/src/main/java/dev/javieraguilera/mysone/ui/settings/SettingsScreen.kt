@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.Preview
@@ -65,6 +66,8 @@ import dev.javieraguilera.mysone.data.AppSettings
 import dev.javieraguilera.mysone.ui.components.BackTopBar
 import dev.javieraguilera.mysone.ui.components.SectionHeader
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
+import dev.javieraguilera.mysone.asr.CANARY_LANGUAGES
+import dev.javieraguilera.mysone.ui.today.capitalized
 import java.util.Locale
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -180,6 +183,29 @@ private fun SettingsContent(
                 )
             }
             Note(stringResource(R.string.settings_source_note))
+            Text(
+                stringResource(R.string.settings_speech_language),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp).semantics { heading() },
+            )
+            Note(stringResource(R.string.settings_speech_language_desc))
+            Column(Modifier.selectableGroup()) {
+                RadioRow(
+                    title = stringResource(R.string.settings_speech_language_phone),
+                    summary = null,
+                    selected = settings.speechLanguage !in CANARY_LANGUAGES,
+                    onClick = { onUpdate { it.copy(speechLanguage = "") } },
+                )
+                CANARY_LANGUAGES.forEach { code ->
+                    RadioRow(
+                        // Cada idioma con su propio nombre ("Deutsch", "Français"): así lo reconoce quien lo habla.
+                        title = Locale.forLanguageTag(code).let { it.getDisplayLanguage(it).capitalized() },
+                        summary = null,
+                        selected = settings.speechLanguage == code,
+                        onClick = { onUpdate { it.copy(speechLanguage = code) } },
+                    )
+                }
+            }
             GapSlider(settings.conversationGapMin) { minutes -> onUpdate { it.copy(conversationGapMin = minutes) } }
             SwitchRow(
                 title = stringResource(R.string.settings_battery_saver),

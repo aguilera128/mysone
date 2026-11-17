@@ -104,8 +104,8 @@ function action(text) {
 // La regex del recordatorio rápido (§7.4) solo decide si se pregunta al modelo. Recordatorio explícito
 // (explicitReminder) es solo cuando quien habla lo pide para sí (§7.3, Prompts): "no te olvides de comprar pan",
 // dicho a otro, o "recuérdale a Pablo…" quedan como sugerencia, igual que haría el modelo de verdad.
-const TRIGGER = /\b(recu[eé]rd(a|ame|amelo|ale)|av[ií]s(ame|ale)|no ((se|me|te|nos) ){1,2}(olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo))\b/i;
-const EXPLICIT = /\b(recu[eé]rda(me|melo)|av[ií]same|no me dejes olvidar|no se me olvide|ap[uú]nta(me|lo))\b/i;
+const TRIGGER = /\b(recu[eé]rd(a|ame|amelo|ale)|av[ií]s(ame|ale)|no ((se|me|te|nos) ){1,2}(olvides|olvide|dejes olvidar)|ap[uú]nta(me|lo)|remind (me|us)|don['’]?t (let me )?forget)\b/i;
+const EXPLICIT = /\b(recu[eé]rda(me|melo)|av[ií]same|no me dejes olvidar|no se me olvide|ap[uú]nta(me|lo)|remind (me|us)|don['’]?t (let me )?forget)\b/i;
 const DUTY = /\b(tengo que|tenemos que|tienes que|hay que)\s+(.+)/i;
 
 /** Líneas "[HH:mm:ss] texto" de la transcripción. */

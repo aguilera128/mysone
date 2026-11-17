@@ -108,7 +108,7 @@ private fun ListeningStatus.isActive() =
     this is ListeningStatus.Listening || this is ListeningStatus.MicBusy || this is ListeningStatus.Starting || this is ListeningStatus.Paused
 
 /** Días de retención de la transcripción literal; 0 = no borrar. */
-private val RETENTION_OPTIONS = listOf(7, 30, 90, 180, 365, 0)
+internal val RETENTION_OPTIONS = listOf(7, 30, 90, 180, 365, 0)
 
 /** Pasar de [current] a [days] borra en la próxima pasada lo que el plazo de antes guardaba: se confirma. */
 internal fun shortensRetention(current: Int, days: Int) = days != 0 && (current == 0 || days < current)

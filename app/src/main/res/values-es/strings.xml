@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cadenas comunes. Cada módulo añade las suyas en res/values/strings_<modulo>.xml. -->
+<resources>
+    <!-- Navegación inferior -->
+    <string name="nav_today">Hoy</string>
+    <string name="nav_ask">Preguntar</string>
+    <string name="nav_tasks">Tareas</string>
+    <string name="nav_memory">Memoria</string>
+
+    <!-- Títulos de pantalla -->
+    <string name="title_conversation">Conversación</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="title_settings_ai">Inteligencia artificial</string>
+    <string name="title_settings_models">Transcripción</string>
+    <string name="title_settings_privacy">Privacidad</string>
+    <string name="title_about">Acerca de</string>
+
+    <!-- Acciones genéricas -->
+    <string name="action_back">Volver</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_accept">Aceptar</string>
+    <string name="action_delete">Borrar</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_edit">Editar</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="action_search">Buscar</string>
+    <string name="action_settings">Ajustes</string>
+
+    <!-- Canales de notificación (MysoneApp) -->
+    <string name="channel_listening_name">Escucha</string>
+    <string name="channel_listening_desc">Estado de la escucha mientras funciona en segundo plano</string>
+    <string name="channel_reminders_name">Recordatorios</string>
+    <string name="channel_reminders_desc">Avisos de tus tareas a la hora que indicaste</string>
+    <string name="channel_alerts_name">Avisos</string>
+    <string name="channel_alerts_desc">Cuando la escucha se detiene y tienes que reanudarla</string>
+
+    <!-- Proveedores de IA (ai/AiPresets.kt) -->
+    <string name="ai_preset_anthropic">Claude (Anthropic)</string>
+    <string name="ai_preset_mistral">Mistral (UE)</string>
+    <string name="ai_preset_openrouter">OpenRouter (cualquier modelo)</string>
+    <string name="ai_preset_deepseek">DeepSeek</string>
+    <string name="ai_preset_custom">Personalizado (compatible con OpenAI)</string>
+    <string name="ai_notice_anthropic">Servidores en EE. UU. Anthropic no entrena con tus datos y los conserva 30 días como máximo.</string>
+    <string name="ai_notice_mistral">Empresa de la UE. Revisa en tu cuenta la opción de no usar tus datos para entrenar.</string>
+    <string name="ai_notice_openrouter">Intermediario de EE. UU. que reenvía tus datos al proveedor del modelo que elijas. No guarda las peticiones salvo que lo actives en tu cuenta; Mysone le pide usar solo proveedores que no entrenan con ellas.</string>
+    <string name="ai_notice_deepseek">Datos en China y puede entrenar con ellos. Desaconsejado si grabas conversaciones de otras personas (RGPD).</string>
+
+    <!-- Modelos de transcripción (asr/ModelManager.kt, catálogo) -->
+    <string name="model_canary_name">Canary 180M</string>
+    <string name="model_canary_desc">Ligero: descarga de 207 MB y poca memoria. Transcribe inglés, español, alemán o francés (el idioma del teléfono; español si usa otro).</string>
+    <string name="model_parakeet_name">Parakeet TDT 0.6B v3</string>
+    <string name="model_parakeet_desc">El más preciso y escribe los números en cifras. Multilingüe (25 idiomas). Descarga de 670 MB.</string>
+    <string name="model_speaker_name">ERes2Net (voces)</string>
+    <string name="model_speaker_desc">Distingue las voces de los audios importados. Descarga de 26 MB.</string>
+</resources>

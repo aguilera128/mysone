@@ -160,9 +160,10 @@ private fun Conversation.unfinished() =
     state == ConvState.OPEN || state == ConvState.READY || state == ConvState.PROCESSING ||
         (state == ConvState.FAILED && processAttempts < AiProcessing.MAX_ATTEMPTS)
 
-internal fun digestInput(day: String, convs: List<Conversation>, tasks: List<TaskItem>, zone: ZoneId): String = buildString {
+internal fun digestInput(day: String, convs: List<Conversation>, tasks: List<TaskItem>, zone: ZoneId, lang: String = Prompts.outputLanguage()): String = buildString {
     val start = Time.dayBounds(day, zone).first
     appendLine("<dia>${Time.dayLong(start, zone)} ($day)</dia>")
+    appendLine("<idioma>$lang</idioma>")
     appendLine("<conversaciones>")
     convs.forEach { appendLine("[${Time.hourMinute(it.startedAt, zone)}] ${it.title.orEmpty()} — ${it.summary.orEmpty()}") }
     appendLine("</conversaciones>")

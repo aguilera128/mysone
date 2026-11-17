@@ -1,31 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cadenas del módulo asr/ (B2): modelos, transcripción e importación de audio. -->
+<!-- Strings for the asr/ module (B2): models, transcription and audio import. -->
 <resources>
     <!-- Transcriber / ModelManager -->
-    <string name="asr_error_load">No se ha podido cargar el modelo de transcripción. Vuelve a descargarlo o prueba con el otro.</string>
-    <string name="asr_error_empty">El modelo no devuelve texto en este dispositivo. Prueba con el otro modelo o vuelve a descargarlo.</string>
-    <string name="asr_error_not_installed">El modelo no está instalado.</string>
-    <string name="asr_error_storage">No se puede acceder al almacenamiento para descargar el modelo.</string>
-    <string name="asr_error_space">No hay espacio suficiente: hacen falta %1$s libres.</string>
-    <string name="asr_error_no_space">La descarga se ha detenido por falta de espacio.</string>
-    <string name="asr_error_download_start">No se ha podido empezar la descarga. Comprueba que el gestor de descargas del sistema está activado.</string>
-    <string name="asr_error_download">La descarga ha fallado (código %1$d). Inténtalo de nuevo.</string>
-    <string name="asr_error_download_lost">La descarga se ha cancelado fuera de la app. Inténtalo de nuevo.</string>
-    <string name="asr_error_corrupt">El archivo %1$s ha llegado dañado. Vuelve a descargar el modelo.</string>
-    <string name="asr_error_install">No se ha podido instalar el modelo. Comprueba el espacio libre e inténtalo de nuevo.</string>
-    <string name="asr_download_title">Modelo de transcripción: %1$s</string>
-    <string name="asr_download_title_speaker">Modelo de voces: %1$s</string>
-    <string name="asr_download_waiting_wifi">Esperando una red Wi-Fi para descargar (%1$d %%). Para usar los datos móviles, cancela y desactiva «Descargar solo con Wi-Fi».</string>
-    <string name="asr_download_waiting_network">Sin conexión con el servidor: la descarga sigue sola cuando vuelva (%1$d %%).</string>
+    <string name="asr_error_load">Couldn\'t load the transcription model. Download it again or try the other one.</string>
+    <string name="asr_error_empty">The model returns no text on this device. Try the other model or download it again.</string>
+    <string name="asr_error_not_installed">The model is not installed.</string>
+    <string name="asr_error_storage">Can\'t access storage to download the model.</string>
+    <string name="asr_error_space">Not enough space: %1$s free is needed.</string>
+    <string name="asr_error_no_space">The download stopped because storage ran out.</string>
+    <string name="asr_error_download_start">Couldn\'t start the download. Check that the system download manager is enabled.</string>
+    <string name="asr_error_download">The download failed (code %1$d). Try again.</string>
+    <string name="asr_error_download_lost">The download was cancelled outside the app. Try again.</string>
+    <string name="asr_error_corrupt">The file %1$s arrived corrupted. Download the model again.</string>
+    <string name="asr_error_install">Couldn\'t install the model. Check the free space and try again.</string>
+    <string name="asr_download_title">Transcription model: %1$s</string>
+    <string name="asr_download_title_speaker">Voice model: %1$s</string>
+    <string name="asr_download_waiting_wifi">Waiting for a Wi-Fi network to download (%1$d %%). To use mobile data, cancel and turn off “Download on Wi-Fi only”.</string>
+    <string name="asr_download_waiting_network">No connection to the server: the download will resume by itself when it\'s back (%1$d %%).</string>
 
-    <!-- Importar audio -->
-    <string name="asr_import_default_name">Audio importado</string>
-    <string name="asr_import_channel_name">Importación de audio</string>
-    <string name="asr_import_notification_title">Transcribiendo audio importado</string>
-    <string name="asr_import_error_no_model">No hay ningún modelo de transcripción listo. Descárgalo en Ajustes › Transcripción.</string>
-    <string name="asr_import_error_format">Este formato de audio no es compatible.</string>
-    <string name="asr_import_error_read">No se ha podido leer el archivo de audio.</string>
-    <string name="asr_import_error_no_speech">No se ha encontrado voz en el archivo.</string>
-    <string name="asr_import_cancelled">Importación cancelada.</string>
-    <string name="asr_import_already">Esta llamada ya estaba transcrita.</string>
+    <!-- Import audio -->
+    <string name="asr_import_default_name">Imported audio</string>
+    <string name="asr_import_channel_name">Audio import</string>
+    <string name="asr_import_notification_title">Transcribing imported audio</string>
+    <string name="asr_import_error_no_model">No transcription model is ready. Download it in Settings › Transcription.</string>
+    <string name="asr_import_error_format">This audio format is not supported.</string>
+    <string name="asr_import_error_read">Couldn\'t read the audio file.</string>
+    <string name="asr_import_error_no_speech">No speech found in the file.</string>
+    <string name="asr_import_cancelled">Import cancelled.</string>
+    <string name="asr_import_already">This call was already transcribed.</string>
 </resources>

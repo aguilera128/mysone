@@ -1,6 +1,7 @@
 package dev.javieraguilera.mysone.asr
 
 import android.content.Context
+import android.content.res.Resources
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineCanaryModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
@@ -10,6 +11,7 @@ import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import dev.javieraguilera.mysone.R
 import dev.javieraguilera.mysone.data.SettingsStore
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -43,7 +45,8 @@ class Transcriber(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var recognizer: OfflineRecognizer? = null
     private var modelId = "" // el de [recognizer]
-    private var failedId = "" // el último que no cargó en caliente: no se reintenta en cada trozo
+    private var language = "" // idioma con el que se creó [recognizer] (solo cuenta en Canary)
+    private var failedId = "" // el último "modelo:idioma" que no cargó en caliente: no se reintenta en cada trozo
     private var refs = 0
 
     /**
@@ -73,7 +76,7 @@ class Transcriber(
     suspend fun transcribe(samples: FloatArray, sampleRate: Int = SAMPLE_RATE): String = mutex.withLock {
         switchToChosen()
         val rec = checkNotNull(recognizer) { "Transcriber sin modelo: falta acquire()" }
-        withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate, modelId) }
+        withContext(Dispatchers.Default) { rec.transcribeText(samples, sampleRate, fixEnye(modelId, language)) }
     }
 
     /**
@@ -83,10 +86,14 @@ class Transcriber(
     // ponytail: mientras carga el nuevo están los dos en memoria; soltar antes el viejo ahorraría RAM a cambio
     // de quedarse sin reconocedor si el nuevo falla.
     private suspend fun switchToChosen() {
-        val wanted = settings.current().asrModelId
-        if (recognizer == null || wanted == modelId || wanted == failedId || !models.isInstalled(wanted)) return
+        val s = settings.current()
+        val wanted = s.asrModelId
+        val lang = canaryLanguage(s.speechLanguage)
+        // Cambiar el idioma solo obliga a recargar Canary: Parakeet lo detecta solo.
+        val same = wanted == modelId && (wanted != CANARY_ID || lang == language)
+        if (recognizer == null || same || "$wanted:$lang" == failedId || !models.isInstalled(wanted)) return
         if (!load(wanted)) {
-            failedId = wanted
+            failedId = "$wanted:$lang"
             _state.value = TranscriberState.Ready(modelId)
         }
     }
@@ -98,18 +105,20 @@ class Transcriber(
             return false
         }
         _state.value = TranscriberState.Loading
+        val lang = canaryLanguage(settings.current().speechLanguage)
         // NonCancellable: cancelado a medias, el reconocedor nativo se quedaría sin liberar hasta el GC.
         val error: Int? = withContext(NonCancellable + Dispatchers.Default) {
             var rec: OfflineRecognizer? = null
             try {
-                rec = models.openRecognizer(model)
+                rec = models.openRecognizer(model, lang)
                 // Autoprueba (§5.4): hay móviles en los que el modelo carga pero no devuelve nada.
-                if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, id).isEmpty()) {
+                if (rec.transcribeText(selfTestSamples(context), SAMPLE_RATE, fixEnye(id, lang)).isEmpty()) {
                     R.string.asr_error_empty
                 } else {
                     recognizer?.release() // el anterior, si se cambia en caliente
                     recognizer = rec
                     modelId = id
+                    language = lang
                     failedId = ""
                     rec = null
                     null
@@ -140,19 +149,37 @@ class Transcriber(
     }
 }
 
+internal const val CANARY_ID = "canary-180m-es"
+
+/** Los idiomas que entiende Canary 180M flash. */
+internal val CANARY_LANGUAGES = listOf("en", "es", "de", "fr")
+
+/** El idioma del sistema, no el de la app: quien elige Mysone en inglés puede seguir hablando español. */
+internal fun phoneLocale(): Locale = Resources.getSystem().configuration.locales[0]
+
+/**
+ * Idioma para Canary: el elegido en Ajustes ([chosen]) o, si es "", el del teléfono si es uno de los cuatro;
+ * si no, español.
+ */
+internal fun canaryLanguage(chosen: String = "", phone: Locale = phoneLocale()): String =
+    chosen.takeIf { it in CANARY_LANGUAGES } ?: phone.language.takeIf { it in CANARY_LANGUAGES } ?: "es"
+
+/** La «ñ» solo se repara con Canary en español. */
+internal fun fixEnye(modelId: String, language: String) = modelId == CANARY_ID && language == "es"
+
 /** Construye el reconocedor desde ficheros (assetManager = null). Comprueba antes ficheros y tamaños:
  *  un modelo roto en sherpa-onnx mata el proceso en vez de lanzar excepción (03 §3.2). */
-internal fun createRecognizer(model: AsrModel, dir: File): OfflineRecognizer {
+internal fun createRecognizer(model: AsrModel, dir: File, language: String): OfflineRecognizer {
     check(model.hasFilesIn(dir)) { "faltan ficheros del modelo ${model.id}" }
     val path = { name: String -> File(dir, name).absolutePath }
     val modelConfig = when (model.id) {
         // modelType vacío, como el ejemplo Canary de getOfflineModelConfig() en el AAR 1.13.8 (comprobado con javap)
-        "canary-180m-es" -> OfflineModelConfig(
+        CANARY_ID -> OfflineModelConfig(
             canary = OfflineCanaryModelConfig(
                 encoder = path("encoder.int8.onnx"),
                 decoder = path("decoder.int8.onnx"),
-                srcLang = "es",
-                tgtLang = "es",
+                srcLang = language,
+                tgtLang = language,
                 usePnc = true,
             ),
             tokens = path("tokens.txt"),
@@ -174,14 +201,14 @@ internal fun createRecognizer(model: AsrModel, dir: File): OfflineRecognizer {
     return OfflineRecognizer(assetManager = null, config = OfflineRecognizerConfig(modelConfig = modelConfig))
 }
 
-/** [modelId]: el modelo con el que se ha creado el reconocedor (la «ñ» solo se repara con Canary). */
-internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: Int, modelId: String): String {
+/** [fixEnye]: ver [fixEnye] (modelo e idioma con los que se creó el reconocedor). */
+internal fun OfflineRecognizer.transcribeText(samples: FloatArray, sampleRate: Int, fixEnye: Boolean): String {
     if (samples.size < sampleRate / 10) return "" // < 0,1 s: nada que reconocer
     val stream = createStream()
     try {
         stream.acceptWaveform(samples, sampleRate)
         decode(stream)
-        return cleanText(getResult(stream).text, fixEnye = modelId == "canary-180m-es")
+        return cleanText(getResult(stream).text, fixEnye = fixEnye)
     } finally {
         stream.release()
     }

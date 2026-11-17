@@ -217,10 +217,25 @@ class AsrLogicTest {
     // --- Recomendación de modelo por RAM ---
 
     @Test fun `Parakeet desde 6 GB y Canary por debajo o sin dato`() {
-        assertEquals("parakeet-v3", recommendedModelId(8))
-        assertEquals("parakeet-v3", recommendedModelId(6))
-        assertEquals("canary-180m-es", recommendedModelId(5))
-        assertEquals("canary-180m-es", recommendedModelId(0))
+        assertEquals("parakeet-v3", recommendedModelId(8, "es"))
+        assertEquals("parakeet-v3", recommendedModelId(6, "es"))
+        assertEquals("canary-180m-es", recommendedModelId(5, "es"))
+        assertEquals("canary-180m-es", recommendedModelId(0, "en"))
+    }
+
+    @Test fun `con un idioma que Canary no entiende se propone Parakeet`() {
+        assertEquals("parakeet-v3", recommendedModelId(4, "it"))
+        assertEquals("es", canaryLanguage(phone = java.util.Locale.ITALIAN))
+        assertEquals("de", canaryLanguage(phone = java.util.Locale.GERMANY))
+    }
+
+    @Test fun `el idioma elegido en Ajustes manda sobre el del telefono`() {
+        assertEquals("es", canaryLanguage("es", phone = java.util.Locale.US))
+        assertEquals("en", canaryLanguage("", phone = java.util.Locale.US))
+        assertEquals("en", canaryLanguage("xx", phone = java.util.Locale.US)) // valor viejo o roto: el del teléfono
+        assertTrue(fixEnye("canary-180m-es", "es"))
+        assertFalse(fixEnye("canary-180m-es", "en"))
+        assertFalse(fixEnye("parakeet-v3", "es"))
     }
 
     // --- Modelo elegido sin instalar ---

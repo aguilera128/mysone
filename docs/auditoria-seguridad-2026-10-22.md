@@ -1,6 +1,6 @@
 # Auditoría de seguridad, 22-oct-2026
 
-Skill `security-audit` de Cloudflare, perfil `standard`, sobre el commit `41712c3` (árbol limpio). Es la primera ejecución sobre este repositorio. La salida completa está fuera del repositorio, en `C:/Users/aguil/security-audit-skill/mysone/run-1/`:
+Skill `security-audit` de Cloudflare, perfil `standard`, sobre el commit `41712c3` (árbol limpio). Es la primera ejecución sobre este repositorio. La salida completa está fuera del repositorio (`security-audit-skill/mysone/run-1/` en el equipo del autor):
 
 - `REPORT.md`: ejecución, postura, tabla de pistas, endurecimiento, patrones positivos y cobertura.
 - `NEEDS-VALIDATION.md`: traza, evidencia, bloqueos y planes de validación de cada pista.

@@ -18,10 +18,10 @@ oficial, manda la realidad: corrige y deja nota.
 | Stack | Kotlin + Jetpack Compose nativo, un solo módulo `:app` | Todo el bucle siempre activo (servicio, audio, VAD, ASR, BD, alarmas) es nativo en cualquier opción; RN pausa los timers JS en segundo plano y duplicaría SQLite en el proceso (07) |
 | Plataforma | Solo Android. iOS no: no se compila en Windows y no deja arrancar grabación en segundo plano (07) | — |
 | SDK | `minSdk 31`, `compileSdk 37`, `targetSdk 36` | 37 obligatorio por core/Compose/Nav3; target 36 = el exigido por Play y el que podemos probar en el emulador API 36 (02, 04) |
-| Toolchain | AGP **9.1.1** (último que soporta el Android Studio instalado, Panda 3; 9.4.1 compila pero el IDE no sincroniza), Gradle 9.8.1, Kotlin 2.4.21, KSP 2.3.12, JDK = JBR 21 de Android Studio | 04. Plantilla verificada: `scratchpad/tcheck` |
+| Toolchain | AGP **9.1.1** (último que soporta el Android Studio instalado, Panda 3; 9.4.1 compila pero el IDE no sincroniza), Gradle 9.8.1, Kotlin 2.4.21, KSP 2.3.12, JDK = JBR 21 de Android Studio | 04. Plantilla verificada fuera del repositorio |
 | ASR | sherpa-onnx **1.13.8** (JitPack `com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8`), ABIs `arm64-v8a` + `x86_64` | 03 |
 | Modelo ASR recomendado | **Según la RAM** (`recommendedModelId(deviceRamGb())`): **NeMo Parakeet TDT 0.6B v3 int8** (670 MB, multilingüe) con **≥ 6 GB**; con menos o si no se sabe, Canary | Parakeet es el más preciso en el diagnóstico de escritorio: WER 2,8 % frente a 9,2 % de Canary, 42/42 «ñ», números en cifras. Pica en ~1,1 GB y el Memory Limiter de Android 17 deja 2 GiB al servicio con 6 GB (1 GiB con 4 GB) (08, 07 P8) |
-| Modelo ligero | **NeMo Canary 180M flash int8** (207 MB, `srcLang="es"` forzado, PnC, MLS-es 3,17 %). Valor por defecto de `AppSettings.asrModelId` | Menos RAM (~0,75–0,9 GB de pico) y descarga, idioma forzable (Parakeet se pasa al inglés con voz muy degradada o en monosílabos) (03, 07, 08) |
+| Modelo ligero | **NeMo Canary 180M flash int8** (207 MB, `srcLang` = idioma del teléfono si es en/es/de/fr, si no "es", PnC, MLS-es 3,17 %). Valor por defecto de `AppSettings.asrModelId` | Menos RAM (~0,75–0,9 GB de pico) y descarga, idioma forzable (Parakeet se pasa al inglés con voz muy degradada o en monosílabos) (03, 07, 08) |
 | VAD | `silero_vad.onnx` (643 854 B) incluido en `assets/` | 03 |
 | BD | Room **3.0.3** (`androidx.room3`) + `BundledSQLiteDriver` + **FTS5** (`unicode61 remove_diacritics 2`, ranking `bm25`) | FTS5 no está garantizado en el SQLite del sistema; el bundled sí (04) |
 | Navegación | Navigation 3 1.2.0 | 04 |
@@ -50,7 +50,7 @@ es imposible, se cambia lo mínimo y se avisa en el informe del agente.
 | Paquete / fichero | Dueño | Contenido |
 |---|---|---|
 | `MysoneApp.kt`, `AppContainer.kt`, `MainActivity.kt` | A | Application (Sentry, canales, workers), contenedor, actividad con `NavDisplay` |
-| `core/` | A | `Time.kt` (formatos es-ES, zona, inicio/fin de día), `Json.kt` (instancia `Json` compartida), `AppScope` |
+| `core/` | A | `Time.kt` (formatos es-ES para los prompts y del idioma del teléfono para la pantalla, zona, inicio/fin de día), `Json.kt` (instancia `Json` compartida), `AppScope` |
 | `data/` | A | `Entities.kt`, `Daos.kt`, `AppDatabase.kt`, `SettingsStore.kt`, `SecretStore.kt` |
 | `capture/` | B1 | `ListeningService.kt`, `AudioCapture.kt`, `PendingQueue.kt`, `ConversationTracker.kt`, `ListeningNotification.kt`, `ListeningController.kt` (contrato), `ResumeNotifier.kt` |
 | `asr/` | B2 | `VadSegmenter.kt` (contrato), `Transcriber.kt` (contrato), `AsrModels.kt`, `ModelManager.kt` (contrato), `AudioDecoder.kt`, `Resampler.kt`, `AudioImporter.kt` (contrato), `ImportWorker.kt`, `PcmFiles.kt`, `CallImporter.kt`, `Speakers.kt` y `OwnerVoice.kt` (quién habla, §5.6) |
@@ -193,7 +193,7 @@ data class AiSettings(
 )
 ```
 `SecretStore`: clave del proveedor cifrada con AES-256-GCM en Android Keystore (código verificado en
-`scratchpad/tcheck/.../Secrets.kt`), sin autenticación de usuario (el servicio la lee con pantalla
+proyecto de comprobación de `docs/investigacion/04`, fuera del repositorio), sin autenticación de usuario (el servicio la lee con pantalla
 bloqueada). Si el descifrado falla, se borra y la UI pide la clave de nuevo. **La clave nunca va a
 logs, Sentry ni exportaciones.**
 
@@ -768,3 +768,14 @@ se calcula en el móvil y sin guardar audio (solo vectores mientras dura la impo
   encima de la versión de esquema 1 con una conversación importada (migración), bajar el modelo de voces, registrar la
   voz con `mic.pcm` de una voz MLS-es e importar una conversación de dos voces reales en WAV y como llamada AAC de banda
   telefónica en `Recordings/Call` (09 §6).
+
+## Idiomas (17-nov-2026)
+
+- Textos en `res/values/` (inglés, idioma por defecto) y `res/values-es/`. Todo texto nuevo va en los dos.
+  La app sigue el idioma del teléfono o el elegido para ella en Ajustes de Android (`generateLocaleConfig`).
+- Los prompts siguen en español (caché estable) y el mensaje de usuario lleva el idioma de salida
+  (`Prompts.outputLanguage()`, el del teléfono nombrado en español: "inglés", "alemán"…).
+- Canary transcribe en/es/de/fr según el teléfono (`canaryLanguage()`); con otro idioma se recomienda Parakeet v3
+  (25 idiomas europeos). La recuperación de la «ñ» solo se aplica con Canary en español.
+- Recordatorio rápido: disparadores en español e inglés (`QuickReminders.TRIGGER`). Otros idiomas solo tienen el
+  procesado normal de la conversación.

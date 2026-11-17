@@ -137,7 +137,7 @@ el micro lejano y en el bolsillo.
 
 ## 8. Pendiente
 
-- Llamadas reales del S25 Ultra: formato de la grabadora (¿estéreo con un canal por lado?, ¿la voz propia en banda
+- Llamadas reales de un Samsung: formato de la grabadora (¿estéreo con un canal por lado?, ¿la voz propia en banda
   ancha?) y cuánto tarda la importación en el móvil.
 - Más de 3 voces, voces parecidas (mismo sexo y edad), solapes (dos a la vez: la parte va a una sola voz), música.
 - Grabaciones largas: el agrupado es O(n²) en memoria (3 000 partes ≈ 18 MB); por encima, sin hablantes.

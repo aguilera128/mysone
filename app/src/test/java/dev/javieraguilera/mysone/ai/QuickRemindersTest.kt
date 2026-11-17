@@ -26,6 +26,8 @@ class QuickRemindersTest {
             "no se olvide usted del recibo",
             "Apúntame una cita el jueves",
             "apuntalo en la lista",
+            "Remind me to call the garage tomorrow",
+            "don’t let me forget the gift",
             "Recuérdame", // con la tilde como carácter combinante
         ).forEach { assertTrue(it, QuickReminders.matches(it)) }
     }
@@ -56,12 +58,13 @@ class QuickRemindersTest {
     @Test fun `entrada del recordatorio rápido usa el momento en que se dijo`() {
         val madrid = ZoneId.of("Europe/Madrid")
         val said = ZonedDateTime.of(2026, 10, 15, 18, 43, 2, 0, madrid).toInstant().toEpochMilli()
-        val text = reminderInput(said, listOf(Segment(1, 1, said, said + 3000, "Recuérdame mañana llamar")), emptyList(), madrid)
+        val text = reminderInput(said, listOf(Segment(1, 1, said, said + 3000, "Recuérdame mañana llamar")), emptyList(), madrid, "español")
         assertEquals(
             """
             <momento>
             dicho: jueves 15 de octubre de 2026, 18:43 (2026-10-15T18:43)
             zona: Europe/Madrid
+            idioma de salida: español
             </momento>
             <tareas_registradas>
             (ninguna)

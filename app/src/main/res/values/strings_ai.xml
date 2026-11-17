@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cadenas del módulo de IA (ai/). -->
+<!-- Strings for the AI module (ai/). -->
 <resources>
-    <!-- Errores de IA (LlmErrorKind.messageRes) -->
-    <string name="ai_error_auth">La IA no está configurada o la clave no es válida. Revísalo en Ajustes.</string>
-    <string name="ai_error_rate">Has llegado al límite de uso de tu proveedor de IA. Prueba dentro de un rato.</string>
-    <string name="ai_error_network">No hay conexión con el proveedor de IA. Comprueba la red.</string>
-    <string name="ai_error_server">El proveedor de IA ha devuelto un error. Revisa la dirección y los modelos en Ajustes o prueba más tarde.</string>
-    <string name="ai_error_bad_output">La IA ha devuelto una respuesta que no se entiende. Prueba otra vez.</string>
-    <string name="ai_error_refusal">La IA no ha querido responder a esto.</string>
-    <string name="ai_error_tls">No se puede abrir una conexión segura con el proveedor de IA: el certificado no es válido o esa dirección no usa HTTPS. Revisa la URL o el servidor.</string>
-    <string name="ai_error_insecure_url">La URL de la IA empieza por http:// y Mysone solo se conecta por https://. Cámbiala en Ajustes › Inteligencia artificial.</string>
+    <!-- AI errors (LlmErrorKind.messageRes) -->
+    <string name="ai_error_auth">AI is not set up or the API key is not valid. Check it in Settings.</string>
+    <string name="ai_error_rate">You have reached your AI provider\'s usage limit. Try again in a while.</string>
+    <string name="ai_error_network">Can\'t reach the AI provider. Check your network.</string>
+    <string name="ai_error_server">The AI provider returned an error. Check the address and models in Settings or try again later.</string>
+    <string name="ai_error_bad_output">The AI returned a response that couldn\'t be understood. Try again.</string>
+    <string name="ai_error_refusal">The AI declined to answer this.</string>
+    <string name="ai_error_tls">Can\'t open a secure connection to the AI provider: the certificate is not valid or that address doesn\'t use HTTPS. Check the URL or the server.</string>
+    <string name="ai_error_insecure_url">The AI URL starts with http:// and Mysone only connects over https://. Change it in Settings › AI.</string>
 
-    <!-- Probar conexión (AiProcessing.testConnection) -->
-    <string name="ai_test_ok">Conexión correcta</string>
+    <!-- Test connection (AiProcessing.testConnection) -->
+    <string name="ai_test_ok">Connection successful</string>
 </resources>

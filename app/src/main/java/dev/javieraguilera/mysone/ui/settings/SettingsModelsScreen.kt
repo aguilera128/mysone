@@ -145,7 +145,8 @@ class SettingsModelsViewModel(private val container: AppContainer) : ViewModel()
         if (_tests.value[id] == SelfTest.Running) return
         _tests.update { it + (id to SelfTest.Running) }
         viewModelScope.launch {
-            val result = models.selfTest(id).fold({ SelfTest.Ok(it) }, { SelfTest.Failed(it.message) })
+            val language = dev.javieraguilera.mysone.asr.canaryLanguage(container.settings.current().speechLanguage)
+            val result = models.selfTest(id, language).fold({ SelfTest.Ok(it) }, { SelfTest.Failed(it.message) })
             _tests.update { it + (id to result) }
         }
     }
@@ -453,11 +454,13 @@ private fun whereIs(startedAt: Long): String {
     val day = Time.dayKey(startedAt)
     val time = Time.hourMinute(startedAt)
     val today = Time.today()
+    // En español el día va en minúscula dentro de la frase ("el jueves 15"); en inglés, con mayúscula.
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     return when (day) {
         // "Hoy" es la pestaña; "Ayer" no lo es, y "en Ayer" no se dice.
         today -> stringResource(R.string.models_import_where_tab, stringResource(R.string.ui_day_today), time)
         LocalDate.parse(today).minusDays(1).toString() -> stringResource(R.string.models_import_where_yesterday, time)
-        else -> stringResource(R.string.models_import_where_day, dayFull(day).lowercase(Time.SPAIN), time)
+        else -> stringResource(R.string.models_import_where_day, dayFull(day).let { if (locale.language == "es") it.lowercase(locale) else it }, time)
     }
 }
 

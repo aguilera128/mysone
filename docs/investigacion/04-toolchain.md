@@ -4,8 +4,8 @@ App Android nueva en Kotlin + Jetpack Compose, sideload, uso personal. Todas las
 documento se han sacado **hoy** de `maven-metadata.xml` de Google Maven / Maven Central / services.gradle.org
 (no de memoria), con fecha de publicación (cabecera `Last-Modified` del POM) cuando importa.
 
-**Y se han comprobado compilando**: proyecto mínimo en
-`C:/Users/aguil/AppData/Local/Temp/claude/C--Users-aguil-Dev-mysone/70657f54-8e94-4902-a40b-c79f75e4892e/scratchpad/tcheck`
+**Y se han comprobado compilando**: proyecto mínimo temporal
+(`tcheck`, fuera del repositorio)
 (Compose + Navigation 3 + Room 3 con FTS4 y FTS5 + KSP + DataStore + WorkManager + OkHttp 5 + Sentry +
 plugin Sentry + helper Keystore). Resultado:
 
@@ -72,7 +72,7 @@ con 4 ABIs; con `abiFilters += "arm64-v8a"` bajaría unos 3,6 MB (cifra estimada
    catálogo y nada más (verificado). Además, la API 37.0 requiere "Panda 3 Patch 1"; no he podido confirmar
    si el build instalado es el Patch 1.
 4. **Gradle 9.8.1**: no está en caché (solo 8.14.3 y 8.2.1). El wrapper lo descarga (~140 MB) la primera vez.
-   El wrapper ya generado está en `scratchpad/tcheck/gradle/wrapper/` (+ `gradlew`, `gradlew.bat`), con
+   El wrapper se generó en un proyecto de prueba aparte (hoy es el del repositorio), con
    `distributionSha256Sum=dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f` y
    `gradle-wrapper.jar` con SHA-256 `3b8a2577…68e98`, que coincide con el publicado en
    https://services.gradle.org/versions/current.
@@ -357,7 +357,7 @@ kotlin.code.style=official
 ```
 
 (No hace falta `android.useAndroidX=true` ni `android.nonTransitiveRClass`: ya son el valor por defecto.)
-`local.properties` con `sdk.dir=C\:\\Users\\aguil\\AppData\\Local\\Android\\Sdk` (fuera del repo).
+`local.properties` con `sdk.dir=C\:\\Users\\<usuario>\\AppData\\Local\\Android\\Sdk` (fuera del repo).
 Un `sdk.dir` mal escapado da un confuso `java.io.IOException: Invalid file path` en `SdkLocator`: me pasó
 en la primera build.
 
@@ -481,7 +481,7 @@ LLM. Importar con `platform(libs.okhttp.bom)`. Con R8 en AGP 9 no hubo avisos.
   **DataStore 1.3.0-alpha07…rc01** (rc01 el 12-oct-2026): **no es estable**. Tink: `com.google.crypto.tink:tink-android` 1.23.0.
 - **Recomendación (estable, sin dependencias nuevas):** clave **AES-256-GCM no exportable en Android Keystore**
   + blob `Base64(IV‖ciphertext)` en **DataStore Preferences 1.2.1**. Verificado compilando
-  (`scratchpad/tcheck/app/src/main/java/com/example/tc/data/Secrets.kt`, ~60 líneas). Detalles que importan:
+  (en un proyecto de prueba aparte, ~60 líneas; hoy en `data/`). Detalles que importan:
   - **NO** usar `setUserAuthenticationRequired` ni `setUnlockedDeviceRequired(true)`: el FGS/Worker tiene que
     leer la clave con la pantalla bloqueada (resúmenes nocturnos, recordatorios).
   - IV de 12 bytes generado por el Keystore; tag de 128 bits.

@@ -154,6 +154,7 @@ class ProcessingTest {
             <conversacion>
             inicio: jueves 15 de octubre de 2026, 18:42 (2026-10-15T18:42)
             zona: Europe/Madrid
+            idioma de salida: español
             duración: 6 min
             </conversacion>
             <tareas_registradas>
@@ -164,7 +165,7 @@ class ProcessingTest {
             [18:43:02] Recuérdame mañana a las diez llamar al taller.
             </transcripcion>
         """.trimIndent()
-        assertEquals(expected, processInput(c, segs, listOf("Comprar pan"), 1, 1, madrid))
+        assertEquals(expected, processInput(c, segs, listOf("Comprar pan"), 1, 1, madrid, "español"))
         assertTrue(processInput(c, segs, emptyList(), 2, 3, madrid).contains("parte: 2 de 3\n"))
         assertTrue(processInput(c, segs, emptyList(), 1, 1, madrid).contains("<tareas_registradas>\n(ninguna)\n"))
     }
@@ -298,11 +299,11 @@ class ProcessingTest {
     }
 
     @Test fun `los prompts empiezan por su etiqueta y el de procesado es largo`() {
-        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v3\n"))
-        assertTrue(Prompts.REMINDER.startsWith("mysone:recordatorio v2\n"))
-        assertTrue(Prompts.PLAN.startsWith("mysone:planificar v1\n"))
-        assertTrue(Prompts.ANSWER.startsWith("mysone:responder v2\n"))
-        assertTrue(Prompts.DIGEST.startsWith("mysone:resumen-diario v1\n"))
+        assertTrue(Prompts.PROCESS.startsWith("mysone:procesar v4\n"))
+        assertTrue(Prompts.REMINDER.startsWith("mysone:recordatorio v3\n"))
+        assertTrue(Prompts.PLAN.startsWith("mysone:planificar v2\n"))
+        assertTrue(Prompts.ANSWER.startsWith("mysone:responder v3\n"))
+        assertTrue(Prompts.DIGEST.startsWith("mysone:resumen-diario v2\n"))
         assertTrue(Prompts.TEST.startsWith("mysone:prueba v1\n"))
         // ≥ 512 tokens para que cachee: en español sale a más de 3 caracteres por token.
         assertTrue(Prompts.PROCESS.length > 4 * 512)
@@ -371,5 +372,12 @@ class ProcessingTest {
         }
         assertFalse(LlmException(LlmErrorKind.SERVER, "URL no válida", retryable = false).isTransient())
         assertEquals(ConvState.FAILED, httpError(HttpReply(400, "", null)).stateAfter(0))
+    }
+}
+
+class OutputLanguageTest {
+    @org.junit.Test fun `el idioma de salida es el del teléfono nombrado en español`() {
+        org.junit.Assert.assertEquals("inglés", Prompts.outputLanguage(java.util.Locale.US))
+        org.junit.Assert.assertEquals("español", Prompts.outputLanguage(java.util.Locale.forLanguageTag("es-ES")))
     }
 }

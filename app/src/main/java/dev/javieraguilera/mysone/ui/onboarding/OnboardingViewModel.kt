@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class OnboardingStep { Intro, Legal, Mic, Notifications, Model, Ai, Start }
+enum class OnboardingStep { Intro, HowItWorks, Legal, Mic, Notifications, Model, Options, Ai, Start }
 
 class OnboardingViewModel(private val container: AppContainer, private val saved: SavedStateHandle) : ViewModel() {
     // POST_NOTIFICATIONS solo existe desde Android 13; antes las notificaciones no piden permiso.
@@ -34,6 +34,14 @@ class OnboardingViewModel(private val container: AppContainer, private val saved
 
     val legalAcceptedAt: StateFlow<Long?> = container.settings.data.map { it.legalAcceptedAt }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Ajustes guardados, para el paso de preferencias y el de IA (null hasta que se leen). */
+    val settings: StateFlow<AppSettings?> = container.settings.data
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun updateSettings(change: (AppSettings) -> AppSettings) {
+        container.appScope.launch { container.settings.update(change) }
+    }
 
     val models = container.models
 

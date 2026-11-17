@@ -34,12 +34,18 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 ./gradlew --stop
 ```
 
-- La release va firmada con la clave **debug** de esta máquina (uso personal, instalación manual).
-  Para actualizarla desde otro PC hará falta una clave de release propia, fuera del repositorio.
+- La release va firmada con la clave **debug** de la máquina que compila (instalación manual). Un APK
+  compilado en otro PC no se instala encima: hay que desinstalar antes (se pierden los datos) o usar
+  siempre la misma clave. Para distribuirla, una clave de release propia, fuera del repositorio.
 - El APK lleva `arm64-v8a` y `x86_64` (~73 MB). El modelo de voz NO va dentro: se descarga en el
   onboarding (Canary 207 MB o Parakeet 670 MB, verificados por SHA-256).
 - Sentry solo se activa si al compilar existe `SENTRY_DSN` (o la propiedad `mysone.sentryDsn`).
   Sin DSN no envía nada. Nunca recibe transcripciones, prompts, respuestas ni la clave.
+
+## Idiomas
+
+Inglés por defecto (`res/values/`) y español (`res/values-es/`): todo texto nuevo va en los dos. La IA escribe
+en el idioma del teléfono; Canary transcribe en/es/de/fr. Detalle en `docs/arquitectura.md` § Idiomas.
 
 ## IA (opcional)
 
@@ -103,11 +109,8 @@ IA falsa para las pruebas: `node tools/mock-llm.mjs` (puerto 8787). En la app, U
 No uses la voz TTS «Microsoft Helena Desktop» (la de `conv1.wav`, `conv2.wav` y la autoprueba) para juzgar
 la «ñ»: con ella Canary parte casi todas («espa ol», «ma ana») y con voz humana no
 (`docs/investigacion/08-diagnostico-asr.md`). Para eso hay voz real CC-BY-4.0 de MLS-es (16 clips con «ñ»,
-PCM16 mono 16 kHz) en
-`C:/Users/aguil/AppData/Local/Temp/claude/C--Users-aguil-Dev-mysone/70657f54-8e94-4902-a40b-c79f75e4892e/scratchpad/asrdiag/audio/mls`,
-con `refs.tsv` (`mls/<fichero>.wav<TAB>texto`, rutas relativas a `audio/`). Es el scratchpad de una sesión
-y puede desaparecer: el original está en Hugging Face, `facebook/multilingual_librispeech`, config
-`spanish`, split `test`.
+PCM16 mono 16 kHz) en Hugging Face, `facebook/multilingual_librispeech`, config `spanish`, split `test`
+(no va en el repositorio): elige clips con «ñ» y pásalos a PCM16 mono 16 kHz con ffmpeg.
 
 ### Micrófono falso (solo debug)
 

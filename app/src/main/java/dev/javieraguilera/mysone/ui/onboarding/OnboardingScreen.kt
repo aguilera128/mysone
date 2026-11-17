@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,8 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Hearing
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.TaskAlt
@@ -48,7 +51,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -61,6 +67,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -71,6 +78,13 @@ import dev.javieraguilera.mysone.asr.ModelInstall
 import dev.javieraguilera.mysone.capture.ListeningController
 import dev.javieraguilera.mysone.container
 import dev.javieraguilera.mysone.core.Time
+import dev.javieraguilera.mysone.data.AppSettings
+import dev.javieraguilera.mysone.ui.settings.RETENTION_OPTIONS
+import dev.javieraguilera.mysone.ui.settings.RadioRow
+import dev.javieraguilera.mysone.ui.settings.SettingsAiScreen
+import dev.javieraguilera.mysone.ui.settings.SwitchRow
+import dev.javieraguilera.mysone.ui.settings.providerName
+import dev.javieraguilera.mysone.ui.settings.requestUnrestricted
 import dev.javieraguilera.mysone.ui.theme.MysoneTheme
 
 // MainActivity marca onboardingDone al llamar a onFinished.
@@ -90,11 +104,28 @@ fun OnboardingScreen(onFinished: () -> Unit) {
         install == ModelInstall.Installed || vm.models.isInstalled(vm.selectedModelId)
     }
 
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    // Exención de batería: se vuelve a mirar al volver del diálogo de Android.
+    val power = remember { context.getSystemService(android.os.PowerManager::class.java) }
+    var unrestricted by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    LifecycleResumeEffect(Unit) {
+        unrestricted = power.isIgnoringBatteryOptimizations(context.packageName)
+        onPauseOrDispose { }
+    }
+    // La configuración de la IA se abre encima de la bienvenida, con la misma pantalla que en Ajustes.
+    var aiOpen by rememberSaveable { mutableStateOf(false) }
+    if (aiOpen) {
+        BackHandler { aiOpen = false }
+        SettingsAiScreen(onBack = { aiOpen = false })
+        return
+    }
+
     BackHandler(enabled = vm.index > 0) { vm.back() }
 
     OnboardingFrame(index = vm.index, count = vm.steps.size, onBack = vm::back) {
         when (vm.step) {
             OnboardingStep.Intro -> IntroStep(onNext = vm::next)
+            OnboardingStep.HowItWorks -> HowItWorksStep(onNext = vm::next)
             OnboardingStep.Legal -> LegalStep(
                 checked = vm.legalChecked,
                 acceptedAt = legalAcceptedAt,
@@ -134,7 +165,19 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                 onCancel = vm::cancelDownload,
                 onNext = vm::next,
             )
-            OnboardingStep.Ai -> AiStep(onNext = vm::next)
+            OnboardingStep.Options -> OptionsStep(
+                settings = settings ?: AppSettings(),
+                unrestricted = unrestricted,
+                onUpdate = vm::updateSettings,
+                onRequestUnrestricted = { requestUnrestricted(context) },
+                onNext = vm::next,
+            )
+            OnboardingStep.Ai -> AiStep(
+                aiEnabled = settings?.ai?.enabled == true,
+                provider = settings?.ai?.let { providerName(it) }.orEmpty(),
+                onConfigure = { aiOpen = true },
+                onNext = vm::next,
+            )
             OnboardingStep.Start -> StartStep(
                 micReady = mic.granted,
                 modelReady = modelReady,
@@ -295,7 +338,7 @@ private fun LegalStep(checked: Boolean, acceptedAt: Long?, onCheckedChange: (Boo
         Paragraph(stringResource(R.string.onb_legal_disclaimer), muted = true)
         if (acceptedAt != null) {
             Text(
-                stringResource(R.string.onb_legal_accepted, Time.dateTimeLong(acceptedAt)),
+                stringResource(R.string.onb_legal_accepted, Time.dateTimeUi(acceptedAt)),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -479,15 +522,102 @@ private fun InstallProgress(install: ModelInstall) {
 }
 
 @Composable
-private fun AiStep(onNext: () -> Unit) {
+private fun HowItWorksStep(onNext: () -> Unit) {
+    StepLayout(
+        icon = Icons.Outlined.Lightbulb,
+        title = stringResource(R.string.onb_how_title),
+        buttons = { PrimaryButton(stringResource(R.string.onb_next), onNext) },
+    ) {
+        LegalPoint(R.string.onb_how_1_lead, R.string.onb_how_1_body)
+        LegalPoint(R.string.onb_how_2_lead, R.string.onb_how_2_body)
+        LegalPoint(R.string.onb_how_3_lead, R.string.onb_how_3_body)
+        LegalPoint(R.string.onb_how_4_lead, R.string.onb_how_4_body)
+        LegalPoint(R.string.onb_how_5_lead, R.string.onb_how_5_body)
+    }
+}
+
+/** Las opciones que más cambian el día a día; el resto se queda en Ajustes. Se guardan al tocarlas. */
+@Composable
+private fun OptionsStep(
+    settings: AppSettings,
+    unrestricted: Boolean,
+    onUpdate: ((AppSettings) -> AppSettings) -> Unit,
+    onRequestUnrestricted: () -> Unit,
+    onNext: () -> Unit,
+) {
+    StepLayout(
+        icon = Icons.Outlined.Tune,
+        title = stringResource(R.string.onb_options_title),
+        buttons = { PrimaryButton(stringResource(R.string.onb_next), onNext) },
+    ) {
+        Paragraph(stringResource(R.string.onb_options_body), muted = true)
+        Text(stringResource(R.string.privacy_section_retention), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+        Paragraph(stringResource(R.string.privacy_retention_desc), muted = true)
+        Column(Modifier.selectableGroup()) {
+            RETENTION_OPTIONS.forEach { days ->
+                RadioRow(
+                    title = if (days == 0) stringResource(R.string.privacy_retention_never) else stringResource(R.string.privacy_retention_days, days),
+                    summary = if (days == 90) stringResource(R.string.privacy_retention_default) else null,
+                    selected = settings.retentionDays == days,
+                    onClick = { onUpdate { it.copy(retentionDays = days) } },
+                )
+            }
+        }
+        Column {
+            SwitchRow(
+                title = stringResource(R.string.settings_quick_reminders),
+                summary = stringResource(R.string.settings_quick_reminders_desc),
+                checked = settings.quickReminders,
+                onCheckedChange = { on -> onUpdate { it.copy(quickReminders = on) } },
+            )
+            SwitchRow(
+                title = stringResource(R.string.settings_battery_saver),
+                summary = stringResource(R.string.settings_battery_saver_desc),
+                checked = settings.batterySaver,
+                onCheckedChange = { on -> onUpdate { it.copy(batterySaver = on) } },
+            )
+            SwitchRow(
+                title = stringResource(R.string.privacy_secure_screen),
+                summary = stringResource(R.string.privacy_secure_screen_desc),
+                checked = settings.secureScreen,
+                onCheckedChange = { on -> onUpdate { it.copy(secureScreen = on) } },
+            )
+        }
+        if (unrestricted) {
+            CheckLine(stringResource(R.string.settings_battery_ok), positive = true)
+        } else {
+            Paragraph(stringResource(R.string.settings_battery_optimized))
+            Button(onClick = onRequestUnrestricted, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.settings_battery_request))
+            }
+        }
+        Paragraph(stringResource(R.string.onb_options_later), muted = true)
+    }
+}
+
+@Composable
+private fun AiStep(aiEnabled: Boolean, provider: String, onConfigure: () -> Unit, onNext: () -> Unit) {
     StepLayout(
         icon = Icons.Outlined.AutoAwesome,
         title = stringResource(R.string.onb_ai_title),
-        buttons = { PrimaryButton(stringResource(R.string.onb_next), onNext) },
+        buttons = {
+            if (aiEnabled) {
+                PrimaryButton(stringResource(R.string.onb_next), onNext)
+                SecondaryButton(stringResource(R.string.onb_ai_change), onConfigure)
+            } else {
+                PrimaryButton(stringResource(R.string.onb_ai_configure), onConfigure)
+                SecondaryButton(stringResource(R.string.onb_ai_skip), onNext)
+            }
+        },
     ) {
         Paragraph(stringResource(R.string.onb_ai_body_1))
         Paragraph(stringResource(R.string.onb_ai_body_2), muted = true)
-        Paragraph(stringResource(R.string.onb_ai_later), muted = true)
+        if (aiEnabled) {
+            CheckLine(stringResource(R.string.onb_ai_enabled, provider), positive = true)
+        } else {
+            Text(stringResource(R.string.onb_ai_question), style = MaterialTheme.typography.titleMedium)
+            Paragraph(stringResource(R.string.onb_ai_later), muted = true)
+        }
     }
 }
 
@@ -548,4 +678,28 @@ private fun ModelPreview() {
 @Composable
 private fun IntroPreview() {
     MysoneTheme(darkTheme = true) { OnboardingFrame(index = 0, count = 7, onBack = {}) { IntroStep(onNext = {}) } }
+}
+
+@Preview(name = "Preferencias · letra grande", showBackground = true, heightDp = 1400, fontScale = 1.5f)
+@Composable
+private fun OptionsPreview() {
+    MysoneTheme { OptionsStep(settings = AppSettings(), unrestricted = false, onUpdate = {}, onRequestUnrestricted = {}, onNext = {}) }
+}
+
+@Preview(name = "IA · sin configurar", showBackground = true)
+@Composable
+private fun AiOffPreview() {
+    MysoneTheme { AiStep(aiEnabled = false, provider = "", onConfigure = {}, onNext = {}) }
+}
+
+@Preview(name = "IA · activada", showBackground = true, locale = "en")
+@Composable
+private fun AiOnPreview() {
+    MysoneTheme { AiStep(aiEnabled = true, provider = "Anthropic", onConfigure = {}, onNext = {}) }
+}
+
+@Preview(name = "Cómo funciona · estrecho", showBackground = true, widthDp = 320, heightDp = 900)
+@Composable
+private fun HowItWorksPreview() {
+    MysoneTheme { HowItWorksStep(onNext = {}) }
 }

@@ -53,6 +53,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Idioma por app (Ajustes de Android › Apps › Mysone › Idioma): genera la lista desde values-*.
+    androidResources {
+        generateLocaleConfig = true
+    }
     buildFeatures {
         compose = true
         buildConfig = true

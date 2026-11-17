@@ -265,6 +265,7 @@ private val WORD = Regex("[\\p{L}\\p{N}]+")
 private val STOPWORDS = setOf(
     "del", "los", "las", "una", "unos", "unas", "que", "qué", "con", "por", "para", "como", "cómo",
     "cuando", "cuándo", "donde", "dónde", "pero", "eso", "esto", "esta", "este", "sobre",
+    "the", "and", "for", "with", "what", "when", "where", "that", "this", "from", "about", "did", "does",
 )
 
 /** Consulta FTS (OR) con los términos del planificador; sin términos, las palabras de 4+ letras de la pregunta. */
@@ -299,16 +300,18 @@ internal fun alternating(messages: List<LlmMessage>): List<LlmMessage> =
         acc
     }
 
-internal fun planInput(question: String, history: List<ChatMessage>, now: Long, zone: ZoneId): String = buildString {
+internal fun planInput(question: String, history: List<ChatMessage>, now: Long, zone: ZoneId, lang: String = Prompts.outputLanguage()): String = buildString {
     appendLine("<ahora>${Time.dateTimeLong(now, zone)} (${Time.toLocalDateTime(now, zone)}), zona ${zone.id}</ahora>")
+    appendLine("<idioma>$lang</idioma>")
     appendLine("<historial>")
     history.forEach { appendLine("${if (it.role == ChatRole.USER) "usuario" else "asistente"}: ${it.text.replace('\n', ' ')}") }
     appendLine("</historial>")
     append("<pregunta>$question</pregunta>")
 }
 
-internal fun answerInput(question: String, ctx: AskContext, now: Long, zone: ZoneId): String = buildString {
+internal fun answerInput(question: String, ctx: AskContext, now: Long, zone: ZoneId, lang: String = Prompts.outputLanguage()): String = buildString {
     appendLine("<ahora>${Time.dateTimeLong(now, zone)} (${Time.toLocalDateTime(now, zone)}), zona ${zone.id}</ahora>")
+    appendLine("<idioma>$lang</idioma>")
     appendLine("<datos>")
     ctx.facts.forEach { f -> appendLine("- ${f.text}${f.conversationId?.let { " [c:$it]" }.orEmpty()}") }
     appendLine("</datos>")

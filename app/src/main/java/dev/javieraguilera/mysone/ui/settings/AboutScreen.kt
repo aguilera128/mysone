@@ -40,7 +40,9 @@ private val CREDITS = listOf(
     Credit("3D-Speaker ERes2Net (VoxCeleb)", "Apache-2.0", "https://github.com/modelscope/3D-Speaker", R.string.about_speaker_model),
 )
 
-private const val CC_BY_URL = "https://creativecommons.org/licenses/by/4.0/deed.es"
+// Sin /deed.xx: Creative Commons la enseña en el idioma del navegador.
+private const val CC_BY_URL = "https://creativecommons.org/licenses/by/4.0/"
+private const val SOURCE_URL = "https://github.com/aguilera128/mysone"
 
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
@@ -65,6 +67,7 @@ private fun AboutContent(version: String, onBack: () -> Unit, onOpen: (String) -
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
+            CreditRow(stringResource(R.string.app_name), stringResource(R.string.about_source), "GPL-3.0", onClick = { onOpen(SOURCE_URL) })
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SectionHeader(stringResource(R.string.about_section_licenses))

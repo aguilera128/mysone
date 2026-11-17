@@ -9,20 +9,16 @@ import dev.javieraguilera.mysone.data.ConvState
 import dev.javieraguilera.mysone.data.Conversation
 import dev.javieraguilera.mysone.data.GapReason
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 // Formatos de fechas, duraciones y huecos que comparten Hoy, Conversación y Buscar.
 
-private val DAY_FULL = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Time.SPAIN)
-private val DAY_FULL_YEAR = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Time.SPAIN)
-private val DAY_CHIP = DateTimeFormatter.ofPattern("EEE d", Time.SPAIN)
-
-internal fun String.capitalized(): String = replaceFirstChar { it.titlecase(Time.SPAIN) }
+// En el idioma del teléfono; se calculan en cada llamada por si cambia mientras la app está abierta.
+internal fun String.capitalized(): String = replaceFirstChar { it.titlecase(Time.uiLocale()) }
 
 /** "Jueves 15 de octubre"; con año si no es el actual. [day] = "yyyy-MM-dd". */
 internal fun dayFull(day: String, today: String = Time.today()): String {
     val date = LocalDate.parse(day)
-    val format = if (date.year == LocalDate.parse(today).year) DAY_FULL else DAY_FULL_YEAR
+    val format = Time.uiFormat(if (date.year == LocalDate.parse(today).year) "EEEEdMMMM" else "EEEEdMMMMyyyy")
     return format.format(date).capitalized()
 }
 
@@ -43,7 +39,7 @@ internal fun dayHeading(day: String): String {
 
 /** Etiqueta corta para el selector de día: "Hoy", "Ayer", "mar 13". */
 @Composable
-internal fun dayChip(day: String): String = relativeDay(day) ?: DAY_CHIP.format(LocalDate.parse(day))
+internal fun dayChip(day: String): String = relativeDay(day) ?: Time.uiFormat("EEEd").format(LocalDate.parse(day))
 
 /** "27 min", "1 h 5 min", "menos de 1 min". */
 @Composable
